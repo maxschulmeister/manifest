@@ -104,8 +104,13 @@ export class ProviderClient {
       if (!opts.agentId || !opts.sessionKey) {
         throw new Error('Cursor forward requires agentId and sessionKey');
       }
+      const requestBody =
+        opts.apiMode && opts.apiMode !== 'chat_completions'
+          ? (opts.chatBody ?? opts.body)
+          : opts.body;
       return this.cursorProxy.forward({
         ...opts,
+        body: requestBody,
         agentId: opts.agentId,
         sessionKey: opts.sessionKey,
       });

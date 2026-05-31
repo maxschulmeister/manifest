@@ -1,5 +1,6 @@
 import {
   buildCursorSessionPoolKey,
+  extractManifestConversationExtraHeaders,
   hashCursorApiKeyForPool,
   resolveCursorConversationId,
 } from './cursor-session-pool';
@@ -23,5 +24,19 @@ describe('cursor-session-pool', () => {
   it('falls back to session key when header absent', () => {
     expect(resolveCursorConversationId('sess-abc', undefined)).toBe('sess-abc');
     expect(resolveCursorConversationId('default', undefined)).toBe('default');
+  });
+
+  it('extracts x-manifest-conversation-id from inbound request headers', () => {
+    expect(
+      extractManifestConversationExtraHeaders({
+        'x-manifest-conversation-id': 'thread-9',
+      }),
+    ).toEqual({ 'x-manifest-conversation-id': 'thread-9' });
+    expect(
+      extractManifestConversationExtraHeaders({
+        'X-Manifest-Conversation-Id': 'thread-capitalized',
+      }),
+    ).toEqual({ 'x-manifest-conversation-id': 'thread-capitalized' });
+    expect(extractManifestConversationExtraHeaders({})).toBeUndefined();
   });
 });

@@ -1322,6 +1322,38 @@ describe('ProxyFallbackService', () => {
     });
   });
 
+  describe('tryForwardToProvider with Cursor', () => {
+    it('forwards normalized chat body and manifest conversation header', async () => {
+      providerClient.forward.mockResolvedValue({
+        response: new Response('{}', { status: 200 }),
+        isGoogle: false,
+        isAnthropic: false,
+        isChatGpt: false,
+      });
+
+      await service.tryForwardToProvider({
+        provider: 'cursor',
+        apiKey: 'cursor-key',
+        model: 'cursor/composer-2.5',
+        body: { input: 'Hello', stream: false },
+        chatBody: { messages: [{ role: 'user', content: 'Hello' }], stream: false },
+        stream: false,
+        sessionKey: 'default',
+        agentId: 'agent-1',
+        apiMode: 'responses',
+        inboundHeaders: { 'x-manifest-conversation-id': 'thread-9' },
+      });
+
+      expect(providerClient.forward).toHaveBeenCalledWith(
+        expect.objectContaining({
+          chatBody: { messages: [{ role: 'user', content: 'Hello' }], stream: false },
+          apiMode: 'responses',
+          extraHeaders: { 'x-manifest-conversation-id': 'thread-9' },
+        }),
+      );
+    });
+  });
+
   describe('tryForwardToProvider with Gemini subscription', () => {
     it('passes providerResource to providerClient.forward for gemini subscription', async () => {
       providerClient.forward.mockResolvedValue({

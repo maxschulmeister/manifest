@@ -1,3 +1,4 @@
+import type { IncomingHttpHeaders } from 'http';
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -41,6 +42,7 @@ import {
 } from './provider-endpoints';
 import { CopilotTokenService } from './copilot-token.service';
 import { ReasoningContentCache } from './reasoning-content-cache';
+import { extractManifestConversationExtraHeaders } from '../../cursor/cursor-session-pool';
 import { buildProviderExtraHeaders } from './provider-hooks';
 import { shouldTriggerFallback } from './fallback-status-codes';
 import { inferProviderFromModelName } from '../../common/utils/provider-aliases';
@@ -138,6 +140,7 @@ export class ProxyFallbackService {
     fallbackRoutes?: ModelRoute[] | null,
     paramMergeContext?: ParamMergeContext,
     reasoningContentLookup?: ReasoningContentLookup,
+    inboundHeaders?: IncomingHttpHeaders,
   ): Promise<{
     success: {
       forward: ForwardResult;
@@ -259,6 +262,7 @@ export class ProxyFallbackService {
         thinkingLookup,
         reasoningContentLookup,
         paramMergeContext,
+        inboundHeaders,
       });
 
       if (forward.response.ok) {
@@ -306,6 +310,7 @@ export class ProxyFallbackService {
     thinkingLookup?: ThinkingBlockLookup;
     reasoningContentLookup?: ReasoningContentLookup;
     paramMergeContext?: ParamMergeContext;
+    inboundHeaders?: IncomingHttpHeaders;
   }): Promise<ForwardResult> {
     try {
       return await this.forwardToProvider(opts);
@@ -346,6 +351,7 @@ export class ProxyFallbackService {
     thinkingLookup?: ThinkingBlockLookup;
     reasoningContentLookup?: ReasoningContentLookup;
     paramMergeContext?: ParamMergeContext;
+    inboundHeaders?: IncomingHttpHeaders;
   }): Promise<ForwardResult> {
     const {
       provider,
@@ -380,7 +386,11 @@ export class ProxyFallbackService {
         )
       : undefined;
 
-    const extraHeaders = buildProviderExtraHeaders(provider, opts.sessionKey);
+    let extraHeaders = buildProviderExtraHeaders(provider, opts.sessionKey);
+    const conversationHeaders = extractManifestConversationExtraHeaders(opts.inboundHeaders);
+    if (conversationHeaders) {
+      extraHeaders = { ...extraHeaders, ...conversationHeaders };
+    }
 
     // Copilot: exchange the stored GitHub OAuth token for a short-lived API token
     let effectiveKey = opts.apiKey;

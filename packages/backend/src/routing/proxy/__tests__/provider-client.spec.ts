@@ -3012,6 +3012,73 @@ describe('ProviderClient', () => {
   });
 
   describe('Cursor SDK provider', () => {
+    it('forwards normalized chat body for /v1/responses apiMode', async () => {
+      const cursorResponse = new Response(JSON.stringify({ ok: true }), { status: 200 });
+      const cursorProxy = {
+        forward: jest.fn().mockResolvedValue({
+          response: cursorResponse,
+          isGoogle: false,
+          isAnthropic: false,
+          isChatGpt: false,
+        }),
+      };
+      const cursorClient = new ProviderClient(undefined, cursorProxy as never);
+
+      await cursorClient.forward({
+        provider: 'cursor',
+        apiKey: 'cursor-key',
+        model: 'cursor/composer-2.5',
+        body: { input: 'Hello', stream: false },
+        chatBody: { messages: [{ role: 'user', content: 'Hello' }], stream: false },
+        stream: false,
+        apiMode: 'responses',
+        agentId: 'agent-1',
+        sessionKey: 'conv-1',
+      });
+
+      expect(cursorProxy.forward).toHaveBeenCalledWith(
+        expect.objectContaining({
+          body: { messages: [{ role: 'user', content: 'Hello' }], stream: false },
+        }),
+      );
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('forwards normalized chat body for /v1/messages apiMode', async () => {
+      const cursorResponse = new Response(JSON.stringify({ ok: true }), { status: 200 });
+      const cursorProxy = {
+        forward: jest.fn().mockResolvedValue({
+          response: cursorResponse,
+          isGoogle: false,
+          isAnthropic: false,
+          isChatGpt: false,
+        }),
+      };
+      const cursorClient = new ProviderClient(undefined, cursorProxy as never);
+
+      await cursorClient.forward({
+        provider: 'cursor',
+        apiKey: 'cursor-key',
+        model: 'cursor/composer-2.5',
+        body: {
+          model: 'claude-sonnet-4',
+          messages: [{ role: 'user', content: [{ type: 'text', text: 'Hi' }] }],
+          max_tokens: 1024,
+        },
+        chatBody: { messages: [{ role: 'user', content: 'Hi' }], stream: false },
+        stream: false,
+        apiMode: 'messages',
+        agentId: 'agent-1',
+        sessionKey: 'conv-1',
+      });
+
+      expect(cursorProxy.forward).toHaveBeenCalledWith(
+        expect.objectContaining({
+          body: { messages: [{ role: 'user', content: 'Hi' }], stream: false },
+        }),
+      );
+    });
+
     it('delegates to CursorProxyService without HTTP fetch', async () => {
       const cursorResponse = new Response(JSON.stringify({ ok: true }), { status: 200 });
       const cursorProxy = {

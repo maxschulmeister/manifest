@@ -281,6 +281,7 @@ export class ProxyService {
       thinkingLookup,
       reasoningContentLookup,
       paramMergeContext,
+      inboundHeaders: headers,
     });
 
     if (!forward.response.ok && shouldTriggerFallback(forward.response.status)) {
@@ -300,6 +301,7 @@ export class ProxyService {
         reasoningContentLookup,
         apiMode,
         paramMergeContext,
+        inboundHeaders: headers,
       });
       if (fallbackResult) return fallbackResult;
     }
@@ -363,6 +365,7 @@ export class ProxyService {
         reasoningContentLookup,
         apiMode,
         paramMergeContext,
+        inboundHeaders: headers,
       });
       if (fallbackResult) return fallbackResult;
 
@@ -490,6 +493,7 @@ export class ProxyService {
     reasoningContentLookup: ReasoningContentLookup;
     apiMode: ProxyApiMode;
     paramMergeContext: ParamMergeContext;
+    inboundHeaders?: ProxyRequestOptions['headers'];
   }): Promise<ProxyResult | null> {
     const {
       agentId,
@@ -503,6 +507,7 @@ export class ProxyService {
       sessionKey,
       signal,
       apiMode,
+      inboundHeaders,
     } = args;
     // Prefer the resolver's fallback_routes (which already contains the right
     // tier's routes); fall back to a fresh tier lookup if the resolver returned
@@ -548,6 +553,7 @@ export class ProxyService {
       fallbackRoutes,
       args.paramMergeContext,
       args.reasoningContentLookup,
+      inboundHeaders,
     );
 
     this.recordTierIfScoring(sessionKey, resolved.tier);

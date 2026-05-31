@@ -140,6 +140,37 @@ describe('CursorProxyService', () => {
     expect(sent.text).toContain('Continue the conversation');
   });
 
+  it('uses X-Manifest-Conversation-Id from extraHeaders for session pooling', async () => {
+    const agent = {
+      agentId: 'agent-1',
+      model: { id: 'composer-2.5' },
+      send: jest.fn().mockReturnValue(mockRun('ok')),
+      close: jest.fn(),
+      reload: jest.fn().mockResolvedValue(undefined),
+      [Symbol.asyncDispose]: jest.fn().mockResolvedValue(undefined),
+      listArtifacts: jest.fn().mockResolvedValue([]),
+      downloadArtifact: jest.fn(),
+    } as unknown as SDKAgent;
+    mockAcquire.mockResolvedValue(mockLease(agent));
+
+    const service = new CursorProxyService();
+    await service.forward({
+      provider: 'cursor',
+      apiKey: 'cursor-key',
+      model: 'cursor/composer-2.5',
+      body: { messages: [{ role: 'user', content: 'Hi' }] },
+      stream: false,
+      agentId: 'agent-1',
+      sessionKey: 'default',
+      extraHeaders: { 'x-manifest-conversation-id': 'thread-9' },
+    });
+
+    expect(mockAcquire).toHaveBeenCalledWith(
+      buildCursorSessionPoolKey('agent-1', 'cursor-key', 'thread-9'),
+      expect.any(Object),
+    );
+  });
+
   it('returns tool_calls when bridge requests are queued before the live run starts', async () => {
     const agent = {
       agentId: 'agent-1',
