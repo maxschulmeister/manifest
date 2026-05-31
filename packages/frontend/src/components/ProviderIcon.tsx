@@ -140,6 +140,19 @@ export function providerIcon(id: string, size: number = 20): JSX.Element | null 
         />
       );
 
+    /* ── Cursor ───────────────────────────────────── */
+    case 'cursor':
+      return (
+        <img
+          src="/icons/providers/cursor.svg"
+          alt=""
+          width={size}
+          height={size}
+          style={{ ...s, display: 'block', 'object-fit': 'contain' }}
+          aria-hidden="true"
+        />
+      );
+
     /* ── Kiro ─────────────────────────────────────── */
     case 'kiro':
       return (

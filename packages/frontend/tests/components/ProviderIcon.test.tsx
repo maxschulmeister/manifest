@@ -47,6 +47,15 @@ describe("providerIcon", () => {
     expect(img!.getAttribute("height")).toBe("24");
   });
 
+  it("returns the Cursor logo image for \"cursor\"", () => {
+    const { container } = render(() => <div>{providerIcon("cursor", 24)}</div>);
+    const img = container.querySelector("img");
+    expect(img).not.toBeNull();
+    expect(img!.getAttribute("src")).toBe("/icons/providers/cursor.svg");
+    expect(img!.getAttribute("width")).toBe("24");
+    expect(img!.getAttribute("height")).toBe("24");
+  });
+
   it("returns null for unknown provider", () => {
     const { container } = render(() => <div>{providerIcon("unknown-provider")}</div>);
     const svg = container.querySelector("svg");
