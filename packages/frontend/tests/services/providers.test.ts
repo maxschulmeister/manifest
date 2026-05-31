@@ -453,6 +453,25 @@ describe("PROVIDERS", () => {
     expect(og.models).toEqual([]);
   });
 
+  it("Cursor is subscription-only with API key paste and dynamic models", () => {
+    const cursor = PROVIDERS.find((p) => p.id === "cursor")!;
+    expect(cursor).toBeDefined();
+    expect(cursor.name).toBe("Cursor");
+    expect(cursor.supportsSubscription).toBe(true);
+    expect(cursor.subscriptionOnly).toBe(true);
+    expect(cursor.subscriptionAuthMode).toBe("token");
+    expect(cursor.subscriptionCredentialKind).toBe("api-key");
+    expect(cursor.subscriptionKeyPlaceholder).toBe("Paste your Cursor API key");
+    expect(cursor.beta).toBe(true);
+    expect(cursor.models).toEqual([]);
+  });
+
+  it("provides the Cursor integrations URL in the subscription map", () => {
+    expect(getSubscriptionProviderKeyUrl("cursor")).toBe(
+      "https://cursor.com/dashboard?tab=integrations",
+    );
+  });
+
   it("Kiro is subscription-only with CLI OAuth flow and dynamic models", () => {
     const kiro = PROVIDERS.find((p) => p.id === "kiro")!;
     expect(kiro).toBeDefined();

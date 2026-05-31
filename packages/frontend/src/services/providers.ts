@@ -109,6 +109,18 @@ const PROVIDER_UI: Record<string, ProviderUIOverlay> = {
     subtitle: 'DeepSeek V3, R1',
     models: [],
   },
+  cursor: {
+    initial: 'Cu',
+    subtitle: 'Composer, Claude, GPT, Gemini via Cursor',
+    supportsSubscription: true,
+    subscriptionLabel: 'Cursor subscription',
+    subscriptionAuthMode: 'token',
+    subscriptionCredentialKind: 'api-key',
+    subscriptionKeyPlaceholder: 'Paste your Cursor API key',
+    subscriptionOnly: true,
+    beta: true,
+    models: [],
+  },
   copilot: {
     initial: 'GH',
     subtitle: 'Claude, GPT, Gemini via Copilot',
@@ -304,6 +316,7 @@ export function buildProviderDef(shared: SharedProviderEntry): ProviderDef {
 const PROVIDER_ORDER = [
   'qwen',
   'anthropic',
+  'cursor',
   'deepseek',
   'copilot',
   'gemini',

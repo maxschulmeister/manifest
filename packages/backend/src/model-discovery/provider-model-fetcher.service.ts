@@ -11,6 +11,7 @@ import {
 import { normalizeMinimaxSubscriptionBaseUrl } from '../routing/provider-base-url';
 import { getQwenCompatibleBaseUrl, normalizeQwenCompatibleBaseUrl } from '../routing/qwen-region';
 import { OpencodeGoCatalogService } from './opencode-go-catalog.service';
+import { discoverCursorModels } from '../cursor/cursor-model-discovery';
 import {
   buildKiroHeaders,
   KIRO_BASE_URL,
@@ -565,6 +566,8 @@ export class ProviderModelFetcherService {
       return [];
     } else if (configKey === 'kiro') {
       return this.fetchKiroModels(apiKey);
+    } else if (configKey === 'cursor') {
+      return discoverCursorModels(apiKey);
     }
     const config = PROVIDER_CONFIGS[configKey];
     if (!config) {

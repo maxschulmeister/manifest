@@ -25,6 +25,7 @@ import {
   supplementWithKnownModels,
 } from './model-fallback';
 import { lookupKnownPrice } from './known-model-prices';
+import { buildCursorFallbackModels } from '../cursor/cursor-model-discovery';
 import { mergeModelCapabilities, modelSupportsStreaming } from './model-capabilities';
 // Import static helpers directly to avoid circular dependency with RoutingModule
 const customProviderKey = (id: string) => `custom:${id}`;
@@ -118,7 +119,10 @@ export class ModelDiscoveryService {
 
     // Subscription providers without a token: use curated fallback
     if (provider.auth_type === 'subscription' && !apiKey) {
-      raw = buildSubscriptionFallbackModels(this.pricingSync, provider.provider);
+      raw =
+        lowerProvider === 'cursor'
+          ? buildCursorFallbackModels()
+          : buildSubscriptionFallbackModels(this.pricingSync, provider.provider);
       if (raw.length > 0) {
         this.logger.log(
           `No token for subscription provider ${provider.provider} — using ${raw.length} fallback models`,
@@ -145,7 +149,10 @@ export class ModelDiscoveryService {
       // actually grants must use the curated `knownModels` list — otherwise
       // the routing UI offers models that 404 at chat time.
       if (raw.length === 0 && provider.auth_type === 'subscription') {
-        raw = buildSubscriptionFallbackModels(this.pricingSync, provider.provider);
+        raw =
+          lowerProvider === 'cursor'
+            ? buildCursorFallbackModels()
+            : buildSubscriptionFallbackModels(this.pricingSync, provider.provider);
         if (raw.length > 0) {
           this.logger.log(
             `Subscription provider ${provider.provider} — using ${raw.length} curated models`,
@@ -154,7 +161,14 @@ export class ModelDiscoveryService {
       }
 
       // If native API returned no models, try models.dev first (native IDs), then OpenRouter
-      if (raw.length === 0) {
+      if (raw.length === 0 && lowerProvider === 'cursor') {
+        raw = buildCursorFallbackModels();
+        if (raw.length > 0) {
+          this.logger.log(
+            `Cursor discovery returned 0 models — using ${raw.length} fallback models`,
+          );
+        }
+      } else if (raw.length === 0) {
         raw = buildModelsDevFallback(this.modelsDevSync, provider.provider);
         if (raw.length > 0) {
           this.logger.log(

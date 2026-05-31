@@ -16,6 +16,7 @@ describe('SUBSCRIPTION_PROVIDER_CONFIGS', () => {
         'openai',
         'minimax',
         'copilot',
+        'cursor',
         'ollama-cloud',
         'zai',
         'opencode-go',
@@ -67,6 +68,21 @@ describe('getSubscriptionProviderConfig', () => {
     const config = getSubscriptionProviderConfig('minimax');
     expect(config).toMatchObject({
       subscriptionAuthMode: 'device_code',
+    });
+  });
+
+  it('returns config for cursor', () => {
+    const config = getSubscriptionProviderConfig('cursor');
+    expect(config).toEqual({
+      supportsSubscription: true,
+      subscriptionLabel: 'Cursor subscription',
+      subscriptionAuthMode: 'token',
+      subscriptionKeyPlaceholder: 'Paste your Cursor API key',
+      subscriptionCapabilities: {
+        maxContextWindow: 1000000,
+        supportsPromptCaching: false,
+        supportsBatching: false,
+      },
     });
   });
 
@@ -180,6 +196,7 @@ describe('supportsSubscriptionProvider', () => {
     expect(supportsSubscriptionProvider('openai')).toBe(true);
     expect(supportsSubscriptionProvider('minimax')).toBe(true);
     expect(supportsSubscriptionProvider('copilot')).toBe(true);
+    expect(supportsSubscriptionProvider('cursor')).toBe(true);
     expect(supportsSubscriptionProvider('ollama-cloud')).toBe(true);
     expect(supportsSubscriptionProvider('zai')).toBe(true);
     expect(supportsSubscriptionProvider('opencode-go')).toBe(true);

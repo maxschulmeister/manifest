@@ -1,4 +1,15 @@
+import { Cursor } from '@cursor/sdk';
 import { ProviderModelFetcherService, PROVIDER_CONFIGS } from './provider-model-fetcher.service';
+
+jest.mock('@cursor/sdk', () => ({
+  Cursor: {
+    models: {
+      list: jest.fn(),
+    },
+  },
+}));
+
+const mockCursorList = Cursor.models.list as jest.Mock;
 
 describe('ProviderModelFetcherService', () => {
   let service: ProviderModelFetcherService;
@@ -7,6 +18,7 @@ describe('ProviderModelFetcherService', () => {
   beforeEach(() => {
     service = new ProviderModelFetcherService();
     fetchSpy = jest.spyOn(global, 'fetch');
+    mockCursorList.mockReset();
   });
 
   afterEach(() => {
@@ -1749,6 +1761,33 @@ describe('ProviderModelFetcherService', () => {
       const result = await service.fetch('opencode-go', 'og-token', 'subscription');
       expect(result).toEqual([]);
       expect(fetchSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('cursor provider', () => {
+    it('discovers models via Cursor SDK', async () => {
+      mockCursorList.mockResolvedValue([
+        {
+          id: 'composer-2.5',
+          displayName: 'Composer 2.5',
+          variants: [{ params: [], displayName: 'Composer 2.5', isDefault: true }],
+        },
+      ]);
+      const result = await service.fetch('cursor', 'cursor-api-key', 'subscription');
+      expect(mockCursorList).toHaveBeenCalledWith({ apiKey: 'cursor-api-key' });
+      expect(result[0]).toMatchObject({
+        id: 'cursor/composer-2.5',
+        provider: 'cursor',
+        inputPricePerToken: 0,
+        outputPricePerToken: 0,
+      });
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('returns [] when Cursor SDK discovery fails', async () => {
+      mockCursorList.mockRejectedValue(new Error('unauthorized'));
+      const result = await service.fetch('cursor', 'bad-key', 'subscription');
+      expect(result).toEqual([]);
     });
   });
 

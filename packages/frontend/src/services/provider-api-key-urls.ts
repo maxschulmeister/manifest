@@ -28,6 +28,7 @@ export const getRoutingProviderApiKeyUrl = (providerId: string): string | undefi
  * Anthropic setup-tokens come from the Claude Code CLI, not the API console).
  */
 export const SUBSCRIPTION_PROVIDER_KEY_URLS: Record<string, string> = {
+  cursor: 'https://cursor.com/dashboard?tab=integrations',
   'ollama-cloud': 'https://ollama.com/settings/keys',
   kiro: 'https://app.kiro.dev',
   zai: 'https://z.ai/manage-apikey/apikey-list',

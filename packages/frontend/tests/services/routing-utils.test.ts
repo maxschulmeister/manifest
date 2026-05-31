@@ -158,6 +158,11 @@ describe("inferProviderFromModel", () => {
     expect(inferProviderFromModel("openrouter/auto")).toBe("openrouter");
   });
 
+  it("detects Cursor models", () => {
+    expect(inferProviderFromModel("cursor/composer-2.5")).toBe("cursor");
+    expect(inferProviderFromModel("cursor/claude-sonnet-4-6@1m")).toBe("cursor");
+  });
+
   it("detects Copilot models", () => {
     expect(inferProviderFromModel("copilot/claude-sonnet-4.6")).toBe("copilot");
     expect(inferProviderFromModel("copilot/gpt-4o")).toBe("copilot");

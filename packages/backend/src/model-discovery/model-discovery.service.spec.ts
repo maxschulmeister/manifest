@@ -1604,6 +1604,49 @@ describe('ModelDiscoveryService', () => {
       expect(fetcher.fetch).not.toHaveBeenCalled();
     });
 
+    it('should use cursor fallback catalog when subscription has no token', async () => {
+      const result = await service.discoverModels(
+        makeProvider({
+          provider: 'cursor',
+          auth_type: 'subscription',
+          api_key_encrypted: null,
+        }),
+      );
+
+      expect(fetcher.fetch).not.toHaveBeenCalled();
+      expect(result.length).toBeGreaterThan(0);
+      expect(result.every((m) => m.provider === 'cursor')).toBe(true);
+      expect(result.every((m) => m.id.startsWith('cursor/'))).toBe(true);
+      expect(result.every((m) => m.inputPricePerToken === 0 && m.outputPricePerToken === 0)).toBe(
+        true,
+      );
+      for (const m of result) {
+        expect(m.authType).toBe('subscription');
+      }
+    });
+
+    it('should use cursor fallback when live discovery returns empty', async () => {
+      mockDecrypt.mockReturnValue('cursor-api-key');
+      fetcher.fetch.mockResolvedValue([]);
+
+      const result = await service.discoverModels(
+        makeProvider({
+          provider: 'cursor',
+          auth_type: 'subscription',
+          api_key_encrypted: 'encrypted',
+        }),
+      );
+
+      expect(fetcher.fetch).toHaveBeenCalledWith(
+        'cursor',
+        'cursor-api-key',
+        'subscription',
+        undefined,
+      );
+      expect(result.length).toBeGreaterThan(0);
+      expect(result.some((m) => m.id.startsWith('cursor/'))).toBe(true);
+    });
+
     it('should skip Copilot token exchange when copilotTokenService is null', async () => {
       const serviceNoCopilot = new ModelDiscoveryService(
         providerRepo as never,

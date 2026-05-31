@@ -160,6 +160,17 @@ export const SUBSCRIPTION_PROVIDER_CONFIGS: Readonly<
       supportsBatching: false,
     }),
   }),
+  cursor: Object.freeze({
+    supportsSubscription: true as const,
+    subscriptionLabel: 'Cursor subscription',
+    subscriptionAuthMode: 'token' as const,
+    subscriptionKeyPlaceholder: 'Paste your Cursor API key',
+    subscriptionCapabilities: Object.freeze({
+      maxContextWindow: 1000000,
+      supportsPromptCaching: false,
+      supportsBatching: false,
+    }),
+  }),
   copilot: Object.freeze({
     supportsSubscription: true as const,
     subscriptionLabel: 'GitHub Copilot subscription',

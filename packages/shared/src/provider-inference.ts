@@ -14,6 +14,7 @@ const MODEL_PREFIX_MAP: [RegExp, string][] = [
   [/^minimax-/i, 'minimax'],
   [/^glm-/, 'zai'],
   [/^qwen[23]|^qwq-/, 'qwen'],
+  [/^cursor\//, 'cursor'],
   [/^copilot\//, 'copilot'],
   [/^opencode-go\//, 'opencode-go'],
   [/^kiro\//, 'kiro'],

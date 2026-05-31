@@ -39,6 +39,7 @@ describe('inferProviderFromModel', () => {
     ['glm-4', 'zai'],
     ['qwen2.5-coder', 'qwen'],
     ['qwq-32b', 'qwen'],
+    ['cursor/composer-2.5', 'cursor'],
     ['copilot/gpt-5.4', 'copilot'],
     ['copilot/claude-opus-4.6', 'copilot'],
     ['opencode-go/glm-5.1', 'opencode-go'],

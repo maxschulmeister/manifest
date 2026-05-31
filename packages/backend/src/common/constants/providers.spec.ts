@@ -66,6 +66,15 @@ describe('PROVIDER_REGISTRY', () => {
     expect(anthropic!.aliases).toEqual([]);
   });
 
+  it('cursor is registered as a subscription-only provider shell', () => {
+    const cursor = PROVIDER_REGISTRY.find((p) => p.id === 'cursor');
+    expect(cursor).toBeDefined();
+    expect(cursor!.displayName).toBe('Cursor');
+    expect(cursor!.requiresApiKey).toBe(false);
+    expect(cursor!.localOnly).toBe(false);
+    expect(cursor!.openRouterPrefixes).toEqual([]);
+  });
+
   it('copilot has requiresApiKey=false and localOnly=false', () => {
     const copilot = PROVIDER_REGISTRY.find((p) => p.id === 'copilot');
     expect(copilot).toBeDefined();
