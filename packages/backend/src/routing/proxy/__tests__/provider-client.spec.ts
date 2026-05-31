@@ -3010,4 +3010,68 @@ describe('ProviderClient', () => {
       expect(result.isGoogle).toBe(true);
     });
   });
+
+  describe('Cursor SDK provider', () => {
+    it('delegates to CursorProxyService without HTTP fetch', async () => {
+      const cursorResponse = new Response(JSON.stringify({ ok: true }), { status: 200 });
+      const cursorProxy = {
+        forward: jest.fn().mockResolvedValue({
+          response: cursorResponse,
+          isGoogle: false,
+          isAnthropic: false,
+          isChatGpt: false,
+        }),
+      };
+      const cursorClient = new ProviderClient(undefined, cursorProxy as never);
+
+      const result = await cursorClient.forward({
+        provider: 'cursor',
+        apiKey: 'cursor-key',
+        model: 'cursor/composer-2.5',
+        body,
+        stream: false,
+        agentId: 'agent-1',
+        sessionKey: 'conv-1',
+      });
+
+      expect(cursorProxy.forward).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider: 'cursor',
+          agentId: 'agent-1',
+          sessionKey: 'conv-1',
+        }),
+      );
+      expect(mockFetch).not.toHaveBeenCalled();
+      expect(result.response).toBe(cursorResponse);
+    });
+
+    it('throws when CursorProxyService is not configured', async () => {
+      await expect(
+        client.forward({
+          provider: 'cursor',
+          apiKey: 'cursor-key',
+          model: 'cursor/composer-2.5',
+          body,
+          stream: false,
+          agentId: 'agent-1',
+          sessionKey: 'conv-1',
+        }),
+      ).rejects.toThrow('Cursor proxy is not configured');
+    });
+
+    it('throws when agentId or sessionKey missing', async () => {
+      const cursorProxy = { forward: jest.fn() };
+      const cursorClient = new ProviderClient(undefined, cursorProxy as never);
+
+      await expect(
+        cursorClient.forward({
+          provider: 'cursor',
+          apiKey: 'cursor-key',
+          model: 'cursor/composer-2.5',
+          body,
+          stream: false,
+        }),
+      ).rejects.toThrow('Cursor forward requires agentId and sessionKey');
+    });
+  });
 });

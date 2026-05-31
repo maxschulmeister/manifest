@@ -18,7 +18,7 @@
     "migration:create": "typeorm-ts-node-commonjs migration:create"
   },
   "dependencies": {
-    "manifest-shared": "*",
+    "@cursor/sdk": "1.0.15",
     "@nestjs/cache-manager": "^3.1.0",
     "@nestjs/common": "^11.0.0",
     "@nestjs/config": "^4.0.0",
@@ -38,6 +38,7 @@
     "eventsource-parser": "^3.1.0",
     "express-rate-limit": "^8.5.1",
     "helmet": "^8.1.0",
+    "manifest-shared": "*",
     "pg": "^8.13.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

@@ -271,6 +271,7 @@ export class ProxyService {
       chatBody,
       stream,
       sessionKey,
+      agentId,
       signal,
       authType: route.authType,
       apiMode,

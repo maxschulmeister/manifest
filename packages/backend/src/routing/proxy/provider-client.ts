@@ -1,4 +1,5 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
+import { CursorProxyService } from '../../cursor/cursor-proxy.service';
 import { OPENAI_RESPONSES_ONLY_RE, stripVendorPrefix } from '../../common/constants/openai-models';
 import { XAI_RESPONSES_ONLY_RE } from '../../common/constants/xai-models';
 import { PROVIDER_ENDPOINTS, ProviderEndpoint, resolveEndpointKey } from './provider-endpoints';
@@ -79,6 +80,8 @@ export class ProviderClient {
   constructor(
     @Optional()
     private readonly opencodeGoCatalog?: OpencodeGoCatalogService,
+    @Optional()
+    private readonly cursorProxy?: CursorProxyService,
   ) {}
 
   async forward(opts: ForwardOptions): Promise<ForwardResult> {
@@ -93,6 +96,20 @@ export class ProviderClient {
       customEndpoint,
       authType,
     } = opts;
+
+    if (provider.toLowerCase() === 'cursor') {
+      if (!this.cursorProxy) {
+        throw new Error('Cursor proxy is not configured');
+      }
+      if (!opts.agentId || !opts.sessionKey) {
+        throw new Error('Cursor forward requires agentId and sessionKey');
+      }
+      return this.cursorProxy.forward({
+        ...opts,
+        agentId: opts.agentId,
+        sessionKey: opts.sessionKey,
+      });
+    }
 
     const { endpoint, endpointKey } = await this.resolveEndpoint(
       customEndpoint,

@@ -28,9 +28,11 @@ import { ThoughtSignatureCache } from './thought-signature-cache';
 import { ThinkingBlockCache } from './thinking-block-cache';
 import { ReasoningContentCache } from './reasoning-content-cache';
 import { ProxyExceptionFilter } from './proxy-exception.filter';
+import { CursorModule } from '../../cursor/cursor.module';
 
 @Module({
   imports: [
+    CursorModule,
     TypeOrmModule.forFeature([
       AgentMessage,
       CustomProvider,

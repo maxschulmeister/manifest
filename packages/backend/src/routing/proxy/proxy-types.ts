@@ -64,6 +64,10 @@ export interface ForwardOptions {
    * `cloudaicompanionProject` id assigned during `enrichBlob`.
    */
   providerResource?: string;
+  /** Manifest agent id — required for Cursor SDK session pooling. */
+  agentId?: string;
+  /** Conversation/session key (`x-session-key` or `X-Manifest-Conversation-Id`). */
+  sessionKey?: string;
 }
 
 /** Options for ProxyService.proxyRequest. */

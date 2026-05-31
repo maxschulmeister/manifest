@@ -191,6 +191,25 @@ describe('ProxyMessageRecorder', () => {
       expect(inserted.cost_usd).toBe(0);
     });
 
+    it('records Cursor subscription proxy usage with included cost ($0)', async () => {
+      getByModelMock.mockReturnValue({
+        model_name: 'cursor/composer-2.5',
+        provider: 'Cursor',
+        input_price_per_token: 0.00001,
+        output_price_per_token: 0.00003,
+        display_name: 'Composer 2.5',
+      });
+      await recorder.recordFallbackSuccess(ctx, 'cursor/composer-2.5', 'standard', {
+        provider: 'cursor',
+        authType: 'subscription',
+        usage: { prompt_tokens: 2000, completion_tokens: 800 },
+      });
+      const inserted = insertMock.mock.calls[0][0];
+      expect(inserted.provider).toBe('cursor');
+      expect(inserted.auth_type).toBe('subscription');
+      expect(inserted.cost_usd).toBe(0);
+    });
+
     it('sets cost_usd to null when no pricing data exists', async () => {
       getByModelMock.mockReturnValue(undefined);
       await recorder.recordFallbackSuccess(ctx, 'unknown-model', 'standard', {

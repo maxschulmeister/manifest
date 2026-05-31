@@ -249,6 +249,7 @@ export class ProxyFallbackService {
         chatBody,
         stream,
         sessionKey,
+        agentId,
         signal,
         authType,
         apiMode,
@@ -295,6 +296,7 @@ export class ProxyFallbackService {
     chatBody?: Record<string, unknown>;
     stream: boolean;
     sessionKey: string;
+    agentId?: string;
     signal?: AbortSignal;
     authType?: string;
     resourceUrl?: string;
@@ -334,6 +336,7 @@ export class ProxyFallbackService {
     chatBody?: Record<string, unknown>;
     stream: boolean;
     sessionKey: string;
+    agentId?: string;
     signal?: AbortSignal;
     authType?: string;
     resourceUrl?: string;
@@ -484,6 +487,8 @@ export class ProxyFallbackService {
       thinkingLookup,
       reasoningContentLookup,
       providerResource,
+      agentId: opts.agentId ?? opts.paramMergeContext?.agentId,
+      sessionKey: opts.sessionKey,
     });
   }
 }
