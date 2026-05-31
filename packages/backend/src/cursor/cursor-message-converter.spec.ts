@@ -1,6 +1,7 @@
 import {
   buildBootstrapCursorPrompt,
   buildIncrementalCursorPrompt,
+  computeManifestBootstrapContextFingerprint,
   computeManifestContextFingerprint,
   cursorPromptToSdkUserMessage,
   estimateTokensFromText,
@@ -80,6 +81,31 @@ describe('cursor-message-converter', () => {
     const context = { messages: [{ role: 'user', content: 'x' }] };
     expect(computeManifestContextFingerprint(context)).toBe(
       computeManifestContextFingerprint(context),
+    );
+  });
+
+  it('bootstrap fingerprint ignores transcript growth', () => {
+    const first = { messages: [{ role: 'user', content: 'a' }] };
+    const grown = {
+      messages: [
+        { role: 'user', content: 'a' },
+        { role: 'assistant', content: 'b' },
+        { role: 'user', content: 'c' },
+      ],
+    };
+    expect(computeManifestBootstrapContextFingerprint(first)).toBe(
+      computeManifestBootstrapContextFingerprint(grown),
+    );
+    expect(computeManifestContextFingerprint(first)).not.toBe(
+      computeManifestContextFingerprint(grown),
+    );
+  });
+
+  it('bootstrap fingerprint changes when system instructions change', () => {
+    const a = { systemPrompt: 'one', messages: [{ role: 'user', content: 'hi' }] };
+    const b = { systemPrompt: 'two', messages: [{ role: 'user', content: 'hi' }] };
+    expect(computeManifestBootstrapContextFingerprint(a)).not.toBe(
+      computeManifestBootstrapContextFingerprint(b),
     );
   });
 

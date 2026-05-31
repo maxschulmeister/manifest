@@ -104,9 +104,10 @@ describe('CursorProxyService', () => {
   });
 
   it('uses incremental prompt on follow-up turns', async () => {
-    const { computeManifestContextFingerprint } = await import('./cursor-message-converter');
+    const { computeManifestBootstrapContextFingerprint } =
+      await import('./cursor-message-converter');
     const context = { messages: [{ role: 'user', content: 'Follow up' }] };
-    const fingerprint = computeManifestContextFingerprint(context);
+    const fingerprint = computeManifestBootstrapContextFingerprint(context);
     const agent = {
       agentId: 'agent-1',
       model: { id: 'composer-2.5' },
@@ -138,6 +139,53 @@ describe('CursorProxyService', () => {
 
     const sent = (agent.send as jest.Mock).mock.calls[0][0] as { text: string };
     expect(sent.text).toContain('Continue the conversation');
+    expect(mockReset).not.toHaveBeenCalled();
+  });
+
+  it('uses incremental prompt when full transcript grows on follow-up', async () => {
+    const { computeManifestBootstrapContextFingerprint } =
+      await import('./cursor-message-converter');
+    const firstTurn = { messages: [{ role: 'user', content: 'Hello' }] };
+    const bootstrapFingerprint = computeManifestBootstrapContextFingerprint(firstTurn);
+    const agent = {
+      agentId: 'agent-1',
+      model: { id: 'composer-2.5' },
+      send: jest.fn().mockReturnValue(mockRun('incremental reply')),
+      close: jest.fn(),
+      reload: jest.fn().mockResolvedValue(undefined),
+      [Symbol.asyncDispose]: jest.fn().mockResolvedValue(undefined),
+      listArtifacts: jest.fn().mockResolvedValue([]),
+      downloadArtifact: jest.fn(),
+    } as unknown as SDKAgent;
+    mockAcquire.mockResolvedValue(
+      mockLease(agent, {
+        bootstrapped: true,
+        contextFingerprint: bootstrapFingerprint,
+        incrementalSendCount: 1,
+      }),
+    );
+
+    const service = new CursorProxyService();
+    await service.forward({
+      provider: 'cursor',
+      apiKey: 'cursor-key',
+      model: 'cursor/composer-2.5',
+      body: {
+        messages: [
+          { role: 'user', content: 'Hello' },
+          { role: 'assistant', content: 'Hi there' },
+          { role: 'user', content: 'Follow up' },
+        ],
+      },
+      stream: false,
+      agentId: 'agent-db-1',
+      sessionKey: 'conv-full-transcript',
+    });
+
+    const sent = (agent.send as jest.Mock).mock.calls[0][0] as { text: string };
+    expect(sent.text).toContain('Continue the conversation');
+    expect(sent.text).toContain('User: Follow up');
+    expect(mockReset).not.toHaveBeenCalled();
   });
 
   it('uses X-Manifest-Conversation-Id from extraHeaders for session pooling', async () => {

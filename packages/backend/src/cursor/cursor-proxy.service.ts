@@ -45,7 +45,7 @@ import {
 import {
   buildBootstrapCursorPrompt,
   buildIncrementalCursorPrompt,
-  computeManifestContextFingerprint,
+  computeManifestBootstrapContextFingerprint,
   cursorPromptToSdkUserMessage,
   openAiMessagesToContext,
 } from './cursor-message-converter';
@@ -267,7 +267,7 @@ export class CursorProxyService implements OnModuleDestroy {
           })
         : buildIncrementalCursorPrompt(context);
     const sdkMessage = cursorPromptToSdkUserMessage(prompt);
-    const fingerprint = computeManifestContextFingerprint(context);
+    const fingerprint = computeManifestBootstrapContextFingerprint(context);
 
     const liveRun = startManifestCursorLiveRun({
       id: lease.bridgeRun?.id ?? `manifest-live-${scopeKey}`,

@@ -110,6 +110,12 @@ export function openAiMessagesToContext(body: Record<string, unknown>): Manifest
   };
 }
 
+/** Fingerprint of durable bootstrap context (system instructions). Ignores transcript growth. */
+export function computeManifestBootstrapContextFingerprint(context: ManifestCursorContext): string {
+  return JSON.stringify({ system: context.systemPrompt ?? '' });
+}
+
+/** Full transcript fingerprint (includes every message). Used for diagnostics, not send-policy reuse. */
 export function computeManifestContextFingerprint(context: ManifestCursorContext): string {
   const payload = {
     system: context.systemPrompt ?? '',

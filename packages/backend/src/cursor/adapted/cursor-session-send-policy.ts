@@ -2,7 +2,7 @@
  * Adapted from pi-cursor-sdk (MIT). See ATTRIBUTION.md.
  */
 import type { ManifestCursorContext } from '../cursor-message-converter';
-import { computeManifestContextFingerprint } from '../cursor-message-converter';
+import { computeManifestBootstrapContextFingerprint } from '../cursor-message-converter';
 
 export const MAX_COMPLETED_INCREMENTAL_SENDS_BEFORE_REBOOTSTRAP = 20;
 
@@ -32,7 +32,7 @@ export function shouldBootstrapCursorContext(
 ): boolean {
   if (!sendState.bootstrapped) return true;
   if (!sendState.contextFingerprint) return true;
-  return sendState.contextFingerprint !== computeManifestContextFingerprint(context);
+  return sendState.contextFingerprint !== computeManifestBootstrapContextFingerprint(context);
 }
 
 export function planCursorSessionSend(

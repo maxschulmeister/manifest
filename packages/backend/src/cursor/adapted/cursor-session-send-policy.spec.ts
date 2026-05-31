@@ -1,4 +1,7 @@
-import { computeManifestContextFingerprint } from '../cursor-message-converter';
+import {
+  computeManifestBootstrapContextFingerprint,
+  computeManifestContextFingerprint,
+} from '../cursor-message-converter';
 import {
   MAX_COMPLETED_INCREMENTAL_SENDS_BEFORE_REBOOTSTRAP,
   planCursorSessionSend,
@@ -15,9 +18,9 @@ describe('cursor-session-send-policy', () => {
     ).toEqual({ mode: 'bootstrap', resetAgent: false, reason: 'initial' });
   });
 
-  it('uses incremental when fingerprint unchanged', () => {
+  it('uses incremental when bootstrap fingerprint unchanged', () => {
     const context = { messages: [{ role: 'user', content: 'hi' }] };
-    const fingerprint = computeManifestContextFingerprint(context);
+    const fingerprint = computeManifestBootstrapContextFingerprint(context);
     expect(
       planCursorSessionSend(
         { bootstrapped: true, contextFingerprint: fingerprint, incrementalSendCount: 1 },
@@ -26,9 +29,34 @@ describe('cursor-session-send-policy', () => {
     ).toEqual({ mode: 'incremental', resetAgent: false, reason: 'incremental' });
   });
 
+  it('uses incremental when full transcript grows on follow-up', () => {
+    const firstTurn = { messages: [{ role: 'user', content: 'hi' }] };
+    const followUp = {
+      messages: [
+        { role: 'user', content: 'hi' },
+        { role: 'assistant', content: 'Hello' },
+        { role: 'user', content: 'follow up' },
+      ],
+    };
+    const bootstrapFingerprint = computeManifestBootstrapContextFingerprint(firstTurn);
+    expect(computeManifestContextFingerprint(firstTurn)).not.toBe(
+      computeManifestContextFingerprint(followUp),
+    );
+    expect(
+      planCursorSessionSend(
+        {
+          bootstrapped: true,
+          contextFingerprint: bootstrapFingerprint,
+          incrementalSendCount: 1,
+        },
+        followUp,
+      ),
+    ).toEqual({ mode: 'incremental', resetAgent: false, reason: 'incremental' });
+  });
+
   it('rebootstraps after incremental threshold', () => {
     const context = { messages: [{ role: 'user', content: 'hi' }] };
-    const fingerprint = computeManifestContextFingerprint(context);
+    const fingerprint = computeManifestBootstrapContextFingerprint(context);
     expect(
       planCursorSessionSend(
         {
@@ -50,14 +78,24 @@ describe('cursor-session-send-policy', () => {
     ).toBe(true);
   });
 
-  it('rebootstraps when context diverges', () => {
-    const before = { messages: [{ role: 'user', content: 'hi' }] };
-    const after = { messages: [{ role: 'user', content: 'changed' }] };
+  it('rebootstraps when bootstrap context diverges', () => {
+    const before = {
+      systemPrompt: 'Be helpful',
+      messages: [{ role: 'user', content: 'hi' }],
+    };
+    const after = {
+      systemPrompt: 'Be terse',
+      messages: [
+        { role: 'user', content: 'hi' },
+        { role: 'assistant', content: 'Hello' },
+        { role: 'user', content: 'follow up' },
+      ],
+    };
     expect(
       shouldBootstrapCursorContext(
         {
           bootstrapped: true,
-          contextFingerprint: computeManifestContextFingerprint(before),
+          contextFingerprint: computeManifestBootstrapContextFingerprint(before),
           incrementalSendCount: 1,
         },
         after,
@@ -67,11 +105,11 @@ describe('cursor-session-send-policy', () => {
       planCursorSessionSend(
         {
           bootstrapped: true,
-          contextFingerprint: computeManifestContextFingerprint(before),
+          contextFingerprint: computeManifestBootstrapContextFingerprint(before),
           incrementalSendCount: 1,
         },
         after,
-      ).reason,
-    ).toBe('context_divergence');
+      ),
+    ).toEqual({ mode: 'bootstrap', resetAgent: true, reason: 'context_divergence' });
   });
 });
