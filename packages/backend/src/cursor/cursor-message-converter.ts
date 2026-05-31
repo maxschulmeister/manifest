@@ -1,6 +1,9 @@
 import { createHash } from 'node:crypto';
 import type { SDKImage, SDKUserMessage } from '@cursor/sdk';
 import type { OpenAIMessage } from '../routing/proxy/proxy-types';
+import { getManifestBridgeContractText } from './adapted/manifest-bridge-contract';
+import type { ManifestToolBridgeSnapshot } from './adapted/manifest-tool-bridge-types';
+import { buildCursorToolManifestText } from './cursor-tool-manifest';
 
 export interface CursorPrompt {
   text: string;
@@ -120,7 +123,15 @@ export function computeManifestContextFingerprint(context: ManifestCursorContext
   return JSON.stringify(payload);
 }
 
-export function buildBootstrapCursorPrompt(context: ManifestCursorContext): CursorPrompt {
+export interface BootstrapCursorPromptOptions {
+  bridgeSnapshot?: ManifestToolBridgeSnapshot;
+  bridgeEnabled?: boolean;
+}
+
+export function buildBootstrapCursorPrompt(
+  context: ManifestCursorContext,
+  options: BootstrapCursorPromptOptions = {},
+): CursorPrompt {
   const sections: string[] = [];
   if (context.systemPrompt) {
     sections.push(`System instructions:\n${context.systemPrompt}`);
@@ -129,9 +140,21 @@ export function buildBootstrapCursorPrompt(context: ManifestCursorContext): Curs
     const formatted = formatOpenAiMessage(msg);
     if (formatted) sections.push(formatted);
   }
+  sections.push(getManifestBridgeContractText());
   sections.push(
-    'Answer using text only. Agent tools in the request are not executed on the Manifest backend in this phase.',
+    buildCursorToolManifestText({
+      bridgeSnapshot: options.bridgeSnapshot,
+      bridgeEnabled: options.bridgeEnabled,
+    }),
   );
+  const hasBridgeTools = (options.bridgeSnapshot?.tools.length ?? 0) > 0;
+  if (hasBridgeTools) {
+    sections.push(
+      'Call only manifest__* MCP tools exposed this run when you need agent tools. Manifest returns tool_calls to the agent; do not assume backend execution.',
+    );
+  } else {
+    sections.push('Answer using text only when no manifest__ bridge tools are exposed.');
+  }
   return {
     text: sections.join(SECTION_SEPARATOR),
     images: extractLatestUserImages(context.messages),

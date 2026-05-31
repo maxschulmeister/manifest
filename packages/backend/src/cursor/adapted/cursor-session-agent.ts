@@ -1,11 +1,16 @@
 /**
  * Adapted from pi-cursor-sdk (MIT). See ATTRIBUTION.md.
- * Manifest phase 2: no pi-tool-bridge / MCP servers.
+ * Phase 3: manifest__ tool bridge via loopback MCP.
  */
 import { createHash } from 'node:crypto';
 import type { AgentModeOption, ModelSelection, SDKAgent } from '@cursor/sdk';
 import { Agent } from '@cursor/sdk';
 import { getManifestCursorSettingSources } from '../cursor-setting-sources';
+import type {
+  ManifestBridgeToolRequest,
+  ManifestToolBridgeRun,
+} from './manifest-tool-bridge-types';
+import { buildManifestToolBridgeSurfaceSignature } from './manifest-tool-bridge-snapshot';
 import type { SessionCursorAgentSendState } from './cursor-session-send-policy';
 
 export interface SessionCursorAgentLease {
@@ -13,6 +18,7 @@ export interface SessionCursorAgentLease {
   poolKey: string;
   instanceId: number;
   agent: SDKAgent;
+  bridgeRun?: ManifestToolBridgeRun;
   sendState: SessionCursorAgentSendState;
   created: boolean;
   commitSend(contextFingerprint: string, bootstrapped: boolean): void;
@@ -24,6 +30,9 @@ interface SessionCursorAgentCreateParams {
   agentMode: AgentModeOption;
   cwd: string;
   modelSelection: ModelSelection;
+  bridgeSurfaceSignature?: string;
+  bridgeRun?: ManifestToolBridgeRun;
+  onBridgeToolRequest?: (request: ManifestBridgeToolRequest) => void;
   createAgent?: typeof Agent.create;
 }
 
@@ -31,16 +40,19 @@ interface SessionCursorAgentEntryBase {
   poolKey: string;
   instanceId: number;
   scopeKey: string;
-  agent: SDKAgent;
   sendState: SessionCursorAgentSendState;
 }
 
 interface ReadyEntry extends SessionCursorAgentEntryBase {
   status: 'ready';
+  agent: SDKAgent;
+  bridgeRun?: ManifestToolBridgeRun;
 }
 
 interface BusyEntry extends SessionCursorAgentEntryBase {
   status: 'busy';
+  agent: SDKAgent;
+  bridgeRun?: ManifestToolBridgeRun;
   pendingCompletion: Promise<void>;
   releaseBusyWait: () => void;
 }
@@ -78,6 +90,7 @@ function buildSessionAgentPoolKey(
     buildModelPoolKey(params.modelSelection),
     settingSources.join(','),
     buildApiKeyPoolKeyFingerprint(params.apiKey),
+    params.bridgeSurfaceSignature ?? 'bridge:none',
   ].join('\0');
 }
 
@@ -86,6 +99,12 @@ function createInitialSendState(): SessionCursorAgentSendState {
 }
 
 async function disposeEntry(entry: ReadyEntry | BusyEntry): Promise<void> {
+  entry.bridgeRun?.cancel('Cursor session agent disposed');
+  try {
+    await entry.bridgeRun?.dispose();
+  } catch {
+    // disposal failure should not block replacement
+  }
   try {
     await entry.agent[Symbol.asyncDispose]();
   } catch {
@@ -112,6 +131,7 @@ function leaseFromReady(
     poolKey: entry.poolKey,
     instanceId: entry.instanceId,
     agent: entry.agent,
+    bridgeRun: entry.bridgeRun,
     sendState: entry.sendState,
     created,
     commitSend: (contextFingerprint, bootstrapped) => {
@@ -178,18 +198,26 @@ async function createReadyEntry(
   const poolKey = buildSessionAgentPoolKey(scopeKey, params);
   const createAgent = params.createAgent ?? Agent.create;
   const settingSources = getManifestCursorSettingSources();
+  const bridgeRun = params.bridgeRun;
+  if (bridgeRun) {
+    bridgeRun.setOnToolRequest(params.onBridgeToolRequest);
+  }
+
   const agent = await createAgent({
     apiKey: params.apiKey,
     model: params.modelSelection,
     mode: params.agentMode,
     local: { cwd: params.cwd, settingSources },
+    ...(bridgeRun?.mcpServers ? { mcpServers: bridgeRun.mcpServers } : {}),
   });
+
   return {
     status: 'ready',
     poolKey,
     instanceId,
     scopeKey,
     agent,
+    bridgeRun,
     sendState,
   };
 }
@@ -212,6 +240,7 @@ export async function acquireSessionCursorAgent(
     }
 
     if (state?.status === 'ready' && state.poolKey === poolKey) {
+      state.bridgeRun?.setOnToolRequest(params.onBridgeToolRequest);
       return leaseFromReady(state, scopeKey, false);
     }
 
@@ -274,4 +303,5 @@ export const __testUtils = {
   disposeAllSessionCursorAgents,
   buildSessionAgentPoolKey,
   buildApiKeyPoolKeyFingerprint,
+  buildManifestToolBridgeSurfaceSignature,
 };

@@ -3,6 +3,7 @@ import {
   buildOpenAiSseStream,
   estimateUsage,
   extractAssistantTextFromSdkMessage,
+  manifestBridgeRequestsToOpenAiToolCalls,
   openAiJsonResponse,
   openAiSseResponse,
 } from './cursor-openai-stream';
@@ -86,5 +87,66 @@ describe('cursor-openai-stream', () => {
       prompt_tokens: 1,
       completion_tokens: 1,
     });
+  });
+
+  it('emits tool_calls finish_reason when bridge tools are present', () => {
+    const toolCalls = manifestBridgeRequestsToOpenAiToolCalls([
+      {
+        runId: 'run-1',
+        bridgeCallId: 'b1',
+        manifestToolCallId: 'call-1',
+        agentToolName: 'bash',
+        mcpToolName: 'manifest__bash',
+        args: { command: 'ls' },
+      },
+    ]);
+    const body = buildOpenAiChatCompletion(
+      'cursor/m',
+      '',
+      { prompt_tokens: 1, completion_tokens: 1 },
+      toolCalls,
+    );
+    expect(body.choices).toEqual([
+      expect.objectContaining({
+        finish_reason: 'tool_calls',
+        message: expect.objectContaining({
+          tool_calls: [
+            expect.objectContaining({
+              id: 'call-1',
+              function: { name: 'bash', arguments: '{"command":"ls"}' },
+            }),
+          ],
+        }),
+      }),
+    ]);
+  });
+
+  it('streams tool_calls deltas in SSE chunks', async () => {
+    const toolCalls = manifestBridgeRequestsToOpenAiToolCalls([
+      {
+        runId: 'run-1',
+        bridgeCallId: 'b1',
+        manifestToolCallId: 'call-1',
+        agentToolName: 'bash',
+        mcpToolName: 'manifest__bash',
+        args: {},
+      },
+    ]);
+    const stream = buildOpenAiSseStream(
+      'cursor/m',
+      '',
+      { prompt_tokens: 1, completion_tokens: 1 },
+      toolCalls,
+    );
+    const reader = stream.getReader();
+    const decoder = new TextDecoder();
+    let combined = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      combined += decoder.decode(value);
+    }
+    expect(combined).toContain('"tool_calls"');
+    expect(combined).toContain('"finish_reason":"tool_calls"');
   });
 });

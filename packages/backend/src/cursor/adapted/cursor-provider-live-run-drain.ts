@@ -1,8 +1,8 @@
 /**
  * Adapted from pi-cursor-sdk (MIT). See ATTRIBUTION.md.
  *
- * Phase 2 keeps only shared helpers and an in-memory run registry.
- * Full drain/resume wiring for the manifest__ tool bridge lands in Phase 3.
+ * Shared helpers for OpenAI transcript shape and a lightweight run registry.
+ * Live-run drain, bridge batching, and resume live in `manifest-cursor-live-run.ts`.
  */
 import type { OpenAIMessage } from '../../routing/proxy/proxy-types';
 

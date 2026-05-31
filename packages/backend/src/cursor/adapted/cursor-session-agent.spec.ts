@@ -233,6 +233,34 @@ describe('cursor-session-agent', () => {
     expect(disposeSpy).toHaveBeenCalled();
   });
 
+  it('wires bridge tool requests when creating an agent with a bridge run', async () => {
+    const agent = mockAgent();
+    const createAgent = jest.fn().mockResolvedValue(agent);
+    const setOnToolRequest = jest.fn();
+    const bridgeRun = {
+      mcpServers: { manifest_tools: { url: 'http://127.0.0.1:1/mcp' } },
+      setOnToolRequest,
+      cancel: jest.fn(),
+      dispose: jest.fn().mockResolvedValue(undefined),
+    };
+    const onBridgeToolRequest = jest.fn();
+    await acquireSessionCursorAgent('scope-bridge', {
+      apiKey: 'k',
+      cwd: '/tmp',
+      modelSelection: { id: 'm' },
+      agentMode: 'agent',
+      createAgent,
+      bridgeRun: bridgeRun as never,
+      onBridgeToolRequest,
+    });
+    expect(setOnToolRequest).toHaveBeenCalledWith(onBridgeToolRequest);
+    expect(createAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mcpServers: bridgeRun.mcpServers,
+      }),
+    );
+  });
+
   it('throws when agent creation fails', async () => {
     const createAgent = jest.fn().mockRejectedValue(new Error('create failed'));
     await expect(

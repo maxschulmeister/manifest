@@ -1,7 +1,27 @@
 import { randomUUID } from 'node:crypto';
 import type { SDKMessage } from '@cursor/sdk';
 import type { StreamUsage } from '../routing/proxy/stream-writer';
+import type { ManifestBridgeToolRequest } from './adapted/manifest-tool-bridge-types';
 import { estimateTokensFromText } from './cursor-message-converter';
+
+export interface OpenAiToolCall {
+  id: string;
+  type: 'function';
+  function: { name: string; arguments: string };
+}
+
+export function manifestBridgeRequestsToOpenAiToolCalls(
+  requests: ManifestBridgeToolRequest[],
+): OpenAiToolCall[] {
+  return requests.map((request) => ({
+    id: request.manifestToolCallId,
+    type: 'function' as const,
+    function: {
+      name: request.agentToolName,
+      arguments: JSON.stringify(request.args),
+    },
+  }));
+}
 
 function isTextBlock(block: unknown): block is { type: 'text'; text: string } {
   return (
@@ -26,7 +46,12 @@ export function buildOpenAiChatCompletion(
   model: string,
   content: string,
   usage: StreamUsage,
+  toolCalls?: OpenAiToolCall[],
 ): Record<string, unknown> {
+  const finishReason = toolCalls && toolCalls.length > 0 ? 'tool_calls' : 'stop';
+  const message: Record<string, unknown> = { role: 'assistant', content: content || null };
+  if (toolCalls && toolCalls.length > 0) message.tool_calls = toolCalls;
+
   return {
     id: `chatcmpl-${randomUUID()}`,
     object: 'chat.completion',
@@ -35,8 +60,8 @@ export function buildOpenAiChatCompletion(
     choices: [
       {
         index: 0,
-        message: { role: 'assistant', content },
-        finish_reason: 'stop',
+        message,
+        finish_reason: finishReason,
       },
     ],
     usage: {
@@ -51,12 +76,14 @@ export function buildOpenAiSseStream(
   model: string,
   content: string,
   usage: StreamUsage,
+  toolCalls?: OpenAiToolCall[],
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   const id = `chatcmpl-${randomUUID()}`;
   const created = Math.floor(Date.now() / 1000);
+  const finishReason = toolCalls && toolCalls.length > 0 ? 'tool_calls' : 'stop';
 
-  const chunks: string[] = [
+  const chunkObjects: Record<string, unknown>[] = [
     {
       id,
       object: 'chat.completion.chunk',
@@ -64,26 +91,80 @@ export function buildOpenAiSseStream(
       model,
       choices: [{ index: 0, delta: { role: 'assistant' }, finish_reason: null }],
     },
-    {
+  ];
+
+  if (content) {
+    chunkObjects.push({
       id,
       object: 'chat.completion.chunk',
       created,
       model,
       choices: [{ index: 0, delta: { content }, finish_reason: null }],
+    });
+  }
+
+  if (toolCalls && toolCalls.length > 0) {
+    for (let index = 0; index < toolCalls.length; index += 1) {
+      const toolCall = toolCalls[index]!;
+      chunkObjects.push({
+        id,
+        object: 'chat.completion.chunk',
+        created,
+        model,
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [
+                {
+                  index,
+                  id: toolCall.id,
+                  type: toolCall.type,
+                  function: { name: toolCall.function.name, arguments: '' },
+                },
+              ],
+            },
+            finish_reason: null,
+          },
+        ],
+      });
+      chunkObjects.push({
+        id,
+        object: 'chat.completion.chunk',
+        created,
+        model,
+        choices: [
+          {
+            index: 0,
+            delta: {
+              tool_calls: [
+                {
+                  index,
+                  function: { arguments: toolCall.function.arguments },
+                },
+              ],
+            },
+            finish_reason: null,
+          },
+        ],
+      });
+    }
+  }
+
+  chunkObjects.push({
+    id,
+    object: 'chat.completion.chunk',
+    created,
+    model,
+    choices: [{ index: 0, delta: {}, finish_reason: finishReason }],
+    usage: {
+      prompt_tokens: usage.prompt_tokens,
+      completion_tokens: usage.completion_tokens,
+      total_tokens: usage.prompt_tokens + usage.completion_tokens,
     },
-    {
-      id,
-      object: 'chat.completion.chunk',
-      created,
-      model,
-      choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
-      usage: {
-        prompt_tokens: usage.prompt_tokens,
-        completion_tokens: usage.completion_tokens,
-        total_tokens: usage.prompt_tokens + usage.completion_tokens,
-      },
-    },
-  ].map((obj) => `data: ${JSON.stringify(obj)}\n\n`);
+  });
+
+  const chunks = chunkObjects.map((obj) => `data: ${JSON.stringify(obj)}\n\n`);
 
   return new ReadableStream<Uint8Array>({
     start(controller) {
