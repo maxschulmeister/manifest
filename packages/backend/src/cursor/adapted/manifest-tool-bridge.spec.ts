@@ -71,6 +71,39 @@ describe('manifest-tool-bridge', () => {
     await run.dispose();
   });
 
+  it('rejects MCP callTool args that violate the bridged schema without queuing to pi', async () => {
+    const snapshot = buildManifestToolBridgeSnapshotFromOpenAiTools([
+      {
+        type: 'function',
+        function: {
+          name: 'web_search',
+          parameters: {
+            type: 'object',
+            required: ['query'],
+            properties: { query: { type: 'string' } },
+          },
+        },
+      },
+    ]);
+    const requests: ManifestBridgeToolRequest[] = [];
+    const run = await getManifestToolBridgeRegistry().createRun({
+      snapshot,
+      onToolRequest: (request) => requests.push(request),
+    });
+    const mcpConfig = run.mcpServers?.manifest_tools as { type: 'http'; url: string };
+    const { client, transport } = await connectClient(mcpConfig.url);
+    const result = await client.callTool({
+      name: 'manifest__web_search',
+      arguments: { search_term: 'austria world cup 2026' },
+    });
+    expect(result.isError).toBe(true);
+    expect(JSON.stringify(result.content)).toContain('Missing or empty required properties: query');
+    expect(requests).toHaveLength(0);
+    await transport.close();
+    await client.close();
+    await run.dispose();
+  });
+
   it('registry tracks pending manifest tool call ids', async () => {
     const registry = __manifestBridgeTestUtils.createRegistry();
     const snapshot = buildManifestToolBridgeSnapshotFromOpenAiTools([

@@ -1,6 +1,7 @@
 import {
   buildOpenAiChatCompletion,
   buildOpenAiSseStream,
+  computeAssistantStreamDelta,
   estimateUsage,
   extractAssistantTextFromSdkMessage,
   manifestBridgeRequestsToOpenAiToolCalls,
@@ -42,6 +43,22 @@ describe('cursor-openai-stream', () => {
         status: 'RUNNING',
       }),
     ).toBe('');
+  });
+
+  it('computes incremental deltas from cumulative assistant snapshots', () => {
+    let snapshot = '';
+    const first = computeAssistantStreamDelta(snapshot, "I'll call");
+    expect(first).toEqual({ delta: "I'll call", nextFullText: "I'll call" });
+    snapshot = first.nextFullText;
+
+    const second = computeAssistantStreamDelta(snapshot, "I'll call the web");
+    expect(second).toEqual({ delta: ' the web', nextFullText: "I'll call the web" });
+  });
+
+  it('appends incremental onDelta chunks that do not repeat the snapshot', () => {
+    const { delta, nextFullText } = computeAssistantStreamDelta('Hello', ' world');
+    expect(delta).toBe(' world');
+    expect(nextFullText).toBe('Hello world');
   });
 
   it('builds OpenAI chat completion JSON', () => {

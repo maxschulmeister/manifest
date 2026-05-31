@@ -21,6 +21,7 @@ import type {
   ManifestToolBridgeRunOptions,
   ManifestToolBridgeSnapshot,
 } from './manifest-tool-bridge-types';
+import { validateArgsAgainstBridgedSchema } from './manifest-tool-bridge-schema';
 import {
   containsKnownMcpToolName,
   convertToolContentToMcpContent,
@@ -102,6 +103,12 @@ export class ManifestToolBridgeRunImpl implements ManifestToolBridgeRun {
 
   takeQueuedToolRequests(): ManifestBridgeToolRequest[] {
     return this.queuedRequests.splice(0);
+  }
+
+  getOutstandingBridgeToolRequests(): ManifestBridgeToolRequest[] {
+    return [...this.pendingByManifestToolCallId.values()]
+      .filter((pending) => !pending.settled)
+      .map((pending) => pending.request);
   }
 
   setOnToolRequest(handler?: (request: ManifestBridgeToolRequest) => void): void {
@@ -219,6 +226,18 @@ export class ManifestToolBridgeRunImpl implements ManifestToolBridgeRun {
     }
     if (this.disposed) return Promise.reject(new Error('Manifest tool bridge run is disposed'));
 
+    const args = normalizeMcpArgs(argsValue);
+    const toolDef = this.snapshot.tools.find((tool) => tool.agentToolName === agentToolName);
+    const validationError = toolDef
+      ? validateArgsAgainstBridgedSchema(toolDef.inputSchema, args)
+      : undefined;
+    if (validationError) {
+      return Promise.resolve({
+        content: [{ type: 'text', text: validationError }],
+        isError: true,
+      });
+    }
+
     this.toolCallCounter += 1;
     const bridgeCallId = `${this.id}-bridge-${this.toolCallCounter}`;
     const request: ManifestBridgeToolRequest = {
@@ -228,7 +247,7 @@ export class ManifestToolBridgeRunImpl implements ManifestToolBridgeRun {
       manifestToolCallId: `${this.id}-tool-${this.toolCallCounter}`,
       agentToolName,
       mcpToolName,
-      args: normalizeMcpArgs(argsValue),
+      args,
     };
 
     return new Promise<CallToolResult>((resolve, reject) => {

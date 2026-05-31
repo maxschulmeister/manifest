@@ -7,6 +7,7 @@ import {
   buildManifestBridgeMcpToolDescription,
   MANIFEST_BRIDGE_MCP_TOOL_PREFIX,
 } from './manifest-bridge-contract';
+import { formatBridgedToolSchemaHint } from './manifest-tool-bridge-schema';
 import type {
   ManifestBridgeToolDefinition,
   ManifestMcpInputSchema,
@@ -67,11 +68,14 @@ export function createMcpToolName(agentToolName: string, usedMcpToolNames: Set<s
 export function snapshotToolToMcpTool(tool: ManifestBridgeToolDefinition): Tool {
   return {
     name: tool.mcpToolName,
-    description: buildManifestBridgeMcpToolDescription({
-      agentToolName: tool.agentToolName,
-      mcpToolName: tool.mcpToolName,
-      agentToolDescription: tool.description,
-    }),
+    description: [
+      buildManifestBridgeMcpToolDescription({
+        agentToolName: tool.agentToolName,
+        mcpToolName: tool.mcpToolName,
+        agentToolDescription: tool.description,
+      }),
+      formatBridgedToolSchemaHint(tool.inputSchema),
+    ].join('\n'),
     inputSchema: tool.inputSchema,
     _meta: { agentToolName: tool.agentToolName },
   };

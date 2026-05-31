@@ -988,10 +988,10 @@ describe('CursorProxyService', () => {
             content: [{ type: 'text', text: 'done' }],
           },
         };
+        queueManifestLiveEvent(liveRun, { type: 'bridge-tool', request: bridgeToolRequest });
       },
       cancel: jest.fn().mockResolvedValue(undefined),
     } as unknown as Awaited<ReturnType<SDKAgent['send']>>;
-    queueManifestLiveEvent(liveRun, { type: 'bridge-tool', request: bridgeToolRequest });
 
     const result = await __testUtils.streamLiveRunUntilDoneForTests(
       service,
@@ -1115,7 +1115,7 @@ describe('CursorProxyService', () => {
     await expect(readPromise).rejects.toBeInstanceOf(ManifestCursorLiveRunAbortError);
   });
 
-  it('forwards SDK onDelta text into the streaming live run', async () => {
+  it('prefers SDK run.stream text over duplicate onDelta when both fire', async () => {
     const agent = {
       agentId: 'agent-1',
       model: { id: 'composer-2.5' },
@@ -1142,8 +1142,96 @@ describe('CursorProxyService', () => {
       sessionKey: 's',
     });
     const text = await result.response.text();
-    expect(text).toContain('delta-chunk');
     expect(text).toContain('stream-body');
+    expect(text).not.toContain('delta-chunk');
+  });
+
+  it('does not emit duplicate content for cumulative run.stream assistant snapshots', async () => {
+    const agent = {
+      agentId: 'agent-1',
+      model: { id: 'composer-2.5' },
+      send: jest.fn(() => ({
+        stream: () => ({
+          [Symbol.asyncIterator]() {
+            const snapshots = ["I'll call", "I'll call the web"];
+            let index = 0;
+            return {
+              next: async () => {
+                if (index >= snapshots.length) return { done: true, value: undefined };
+                const text = snapshots[index++]!;
+                return {
+                  done: false,
+                  value: {
+                    type: 'assistant',
+                    agent_id: 'agent-1',
+                    run_id: 'run-1',
+                    message: {
+                      role: 'assistant',
+                      content: [{ type: 'text', text }],
+                    },
+                  },
+                };
+              },
+            };
+          },
+        }),
+        wait: jest.fn().mockResolvedValue({ status: 'finished', result: "I'll call the web" }),
+        cancel: jest.fn().mockResolvedValue(undefined),
+      })),
+      close: jest.fn(),
+      reload: jest.fn().mockResolvedValue(undefined),
+      [Symbol.asyncDispose]: jest.fn().mockResolvedValue(undefined),
+      listArtifacts: jest.fn().mockResolvedValue([]),
+      downloadArtifact: jest.fn(),
+    } as unknown as SDKAgent;
+    mockAcquire.mockResolvedValue(mockLease(agent));
+
+    const service = new CursorProxyService();
+    const result = await service.forward({
+      provider: 'cursor',
+      apiKey: 'cursor-key',
+      model: 'cursor/composer-2.5',
+      body: { messages: [{ role: 'user', content: 'Hi' }] },
+      stream: true,
+      agentId: 'a',
+      sessionKey: 's-cumulative',
+    });
+    const text = await result.response.text();
+    expect(text).toContain('"content":"I\'ll call"');
+    expect(text).toContain('"content":" the web"');
+    expect(text.match(/"content":"I'll call the web"/g) ?? []).toHaveLength(0);
+  });
+
+  it('does not emit the full assistant text twice when onDelta mirrors run.stream', async () => {
+    const duplicate = 'same-text-twice';
+    const agent = {
+      agentId: 'agent-1',
+      model: { id: 'composer-2.5' },
+      send: jest.fn((_msg, options) => {
+        options?.onDelta?.({ update: { type: 'text-delta', text: duplicate } });
+        return mockRun(duplicate);
+      }),
+      close: jest.fn(),
+      reload: jest.fn().mockResolvedValue(undefined),
+      [Symbol.asyncDispose]: jest.fn().mockResolvedValue(undefined),
+      listArtifacts: jest.fn().mockResolvedValue([]),
+      downloadArtifact: jest.fn(),
+    } as unknown as SDKAgent;
+    mockAcquire.mockResolvedValue(mockLease(agent));
+
+    const service = new CursorProxyService();
+    const result = await service.forward({
+      provider: 'cursor',
+      apiKey: 'cursor-key',
+      model: 'cursor/composer-2.5',
+      body: { messages: [{ role: 'user', content: 'Hi' }] },
+      stream: true,
+      agentId: 'a',
+      sessionKey: 's',
+    });
+    const text = await result.response.text();
+    const contentChunks = text.match(/"content":"same-text-twice"/g) ?? [];
+    expect(contentChunks).toHaveLength(1);
   });
 
   it('streams tool_calls when bridge arrives during the live-run wait loop', async () => {

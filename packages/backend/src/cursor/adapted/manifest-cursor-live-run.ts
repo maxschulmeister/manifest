@@ -34,6 +34,8 @@ export interface ManifestCursorLiveRun {
   sdkRun?: ManifestCursorLiveSdkRun;
   pendingEvents: ManifestLiveQueuedEvent[];
   textDeltas: string[];
+  /** Assistant text already streamed to the agent client before a tool-call pause. */
+  emittedAssistantPrefix: string;
   done: boolean;
   cancelled: boolean;
   disposed: boolean;
@@ -93,6 +95,7 @@ export function startManifestCursorLiveRun(params: {
     bridgeRun: params.bridgeRun,
     pendingEvents: [],
     textDeltas: [],
+    emittedAssistantPrefix: '',
     done: false,
     cancelled: false,
     disposed: false,

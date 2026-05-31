@@ -36,6 +36,7 @@ export interface ManifestToolBridgeRun {
   mcpServers?: Record<string, McpServerConfig>;
   snapshot: ManifestToolBridgeSnapshot;
   takeQueuedToolRequests(): ManifestBridgeToolRequest[];
+  getOutstandingBridgeToolRequests(): ManifestBridgeToolRequest[];
   resolveToolResults(
     toolResults: ReadonlyArray<{ toolCallId: string; content: string; isError?: boolean }>,
   ): void;

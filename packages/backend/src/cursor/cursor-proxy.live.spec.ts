@@ -1,10 +1,14 @@
 /**
  * Live Cursor SDK integration tests. Requires CURSOR_API_KEY in packages/backend/.env.
  * Run from packages/backend:
- *   npm test -- --testPathPattern=cursor-proxy.live --testNamePattern="reports all three"
+ *   npx jest src/cursor/cursor-proxy.live.spec.ts --testTimeout=90000 --forceExit
+ *
+ * Bridge probe test must not await MCP callTool (deadlocks until tool results arrive).
  */
-import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { config as loadEnv } from 'dotenv';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -36,8 +40,8 @@ if (!apiKey) {
 const describeLive = apiKey ? describe : describe.skip;
 
 const LIVE_MODEL = process.env.CURSOR_LIVE_MODEL?.trim() || 'cursor/composer-2.5';
-const LIVE_TIMEOUT_MS = 120_000;
-const BRIDGE_POLL_MS = 30_000;
+const LIVE_TIMEOUT_MS = 90_000;
+const BRIDGE_POLL_MS = 15_000;
 
 const bashTool = {
   type: 'function' as const,
@@ -79,33 +83,51 @@ function expectContentListsToolNames(content: string, toolNames: readonly string
   }
 }
 
-function fireBridgeBashToolCall(url: string): void {
+interface InvokeBridgeDuringForwardOptions {
+  command?: string;
+  expectedMcpToolNames?: readonly string[];
+}
+
+async function invokeBridgeBashToolCall(
+  url: string,
+  command: string,
+  options: { expectedMcpToolNames?: readonly string[] } = {},
+): Promise<void> {
   const client = new Client({ name: 'manifest-live-test', version: '1.0.0' });
   const transport = new StreamableHTTPClientTransport(new URL(url));
-  void (async () => {
-    try {
-      await client.connect(transport);
-      await client.callTool({
-        name: 'manifest__bash',
-        arguments: { command: 'echo bridge-live-ok' },
-      });
-    } catch {
-      // MCP may fail if the live run ends before tool results are resolved.
-    } finally {
-      await transport.close().catch(() => undefined);
+  try {
+    await client.connect(transport);
+    if (options.expectedMcpToolNames) {
+      const listed = await client.listTools();
+      expect(listed.tools.map((tool) => tool.name)).toEqual([...options.expectedMcpToolNames]);
     }
-  })();
+    // Do not await callTool — it blocks until the agent sends tool results on the next
+    // HTTP request, which deadlocks this test while forward() is still in flight.
+    void client
+      .callTool({
+        name: 'manifest__bash',
+        arguments: { command },
+      })
+      .catch(() => undefined);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  } finally {
+    await transport.close().catch(() => undefined);
+  }
 }
 
 async function invokeBridgeDuringForward(
   forwardPromise: Promise<{ response: Response }>,
   pollMs: number,
+  options: InvokeBridgeDuringForwardOptions = {},
 ): Promise<Response> {
+  const command = options.command ?? 'echo bridge-live-ok';
   const [, result] = await Promise.all([
     (async () => {
       const bridgeUrl = await waitForBridgeMcpUrl(pollMs);
       await new Promise((r) => setTimeout(r, 250));
-      fireBridgeBashToolCall(bridgeUrl);
+      await invokeBridgeBashToolCall(bridgeUrl, command, {
+        expectedMcpToolNames: options.expectedMcpToolNames,
+      });
     })(),
     forwardPromise,
   ]);
@@ -132,6 +154,134 @@ async function disposeLiveCursorTestState(): Promise<void> {
 describeLive('CursorProxyService (live Cursor SDK)', () => {
   beforeEach(disposeLiveCursorTestState);
   afterEach(disposeLiveCursorTestState);
+
+  it(
+    'returns exact tool_calls for a forced manifest__bash probe command and resumes',
+    async () => {
+      const probeDir = mkdtempSync(join(tmpdir(), 'manifest-bridge-probe-'));
+      const token = randomUUID();
+      const probeLine = `PROBE=${token}`;
+      const probePath = join(probeDir, 'token.txt');
+      writeFileSync(probePath, `${probeLine}\n`, 'utf8');
+      expect(readFileSync(probePath, 'utf8').trimEnd()).toBe(probeLine);
+
+      const command = `cat ${probePath}`;
+      const service = new CursorProxyService();
+      const sessionKey = `live-bridge-exact-${Date.now()}`;
+      const scopeKey = buildCursorSessionPoolKey('live-agent', apiKey!, sessionKey);
+
+      try {
+        const firstResponse = await invokeBridgeDuringForward(
+          service.forward({
+            provider: 'cursor',
+            apiKey: apiKey!,
+            model: LIVE_MODEL,
+            body: {
+              messages: [{ role: 'user', content: 'Run a shell command.' }],
+              tools: [bashTool],
+            },
+            stream: false,
+            agentId: 'live-agent',
+            sessionKey,
+          }),
+          BRIDGE_POLL_MS,
+          { command, expectedMcpToolNames: ['manifest__bash'] },
+        );
+
+        expect(firstResponse.ok).toBe(true);
+        const firstJson = (await firstResponse.json()) as {
+          choices: Array<{
+            finish_reason: string;
+            message: {
+              tool_calls?: Array<{
+                id: string;
+                type: string;
+                function: { name: string; arguments: string };
+              }>;
+            };
+          }>;
+        };
+        expect(firstJson.choices[0]?.finish_reason).toBe('tool_calls');
+        expect(firstJson.choices[0]?.message.tool_calls).toEqual([
+          {
+            id: expect.any(String),
+            type: 'function',
+            function: {
+              name: 'bash',
+              arguments: JSON.stringify({ command }),
+            },
+          },
+        ]);
+        const toolCallId = firstJson.choices[0]?.message.tool_calls?.[0]?.id;
+        expect(toolCallId).toBeDefined();
+
+        const liveRun = manifestCursorLiveRuns.getForScope(scopeKey);
+        expect(liveRun).toBeDefined();
+        liveRun!.textDeltas.push(probeLine);
+        markManifestLiveRunFinished(liveRun!);
+
+        const second = await service.forward({
+          provider: 'cursor',
+          apiKey: apiKey!,
+          model: LIVE_MODEL,
+          body: {
+            messages: [
+              { role: 'user', content: 'Run a shell command.' },
+              { role: 'tool', tool_call_id: toolCallId!, content: `${probeLine}\n` },
+            ],
+            tools: [bashTool],
+          },
+          stream: false,
+          agentId: 'live-agent',
+          sessionKey,
+        });
+
+        expect(second.response.ok).toBe(true);
+        const secondJson = (await second.response.json()) as {
+          choices: Array<{
+            finish_reason: string;
+            message: { content: string; tool_calls?: unknown };
+          }>;
+        };
+        expect(secondJson.choices[0]?.finish_reason).toBe('stop');
+        expect(secondJson.choices[0]?.message.tool_calls).toBeUndefined();
+        expect(secondJson.choices[0]?.message.content).toBe(probeLine);
+      } finally {
+        rmSync(probeDir, { recursive: true, force: true });
+      }
+    },
+    LIVE_TIMEOUT_MS,
+  );
+
+  it(
+    'completes without tool_calls when the request exposes no agent tools',
+    async () => {
+      const service = new CursorProxyService();
+      const result = await service.forward({
+        provider: 'cursor',
+        apiKey: apiKey!,
+        model: LIVE_MODEL,
+        body: {
+          messages: [{ role: 'user', content: 'Reply with exactly one word: hi' }],
+        },
+        stream: false,
+        agentId: 'live-agent',
+        sessionKey: `live-no-bridge-${Date.now()}`,
+      });
+
+      expect(result.response.ok).toBe(true);
+      const json = (await result.response.json()) as {
+        choices: Array<{
+          finish_reason: string;
+          message: { tool_calls?: unknown };
+        }>;
+      };
+      expect(json.choices[0]?.finish_reason).toBe('stop');
+      expect(json.choices[0]?.message.tool_calls).toBeUndefined();
+      expect(__manifestBridgeTestUtils.getFirstRunMcpUrlForTests()).toBeUndefined();
+    },
+    LIVE_TIMEOUT_MS,
+  );
 
   it(
     'exposes tool_calls and resumes after tool results on the next request',

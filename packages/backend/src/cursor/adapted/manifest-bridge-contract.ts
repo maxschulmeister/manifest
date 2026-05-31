@@ -3,17 +3,29 @@
  */
 export const MANIFEST_BRIDGE_MCP_TOOL_PREFIX = 'manifest__';
 
-const MANIFEST_BRIDGE_CONTRACT_LINES = [
+const MANIFEST_BRIDGE_CONTRACT_BASE_LINES = [
   'Manifest tool bridge contract:',
   `${MANIFEST_BRIDGE_MCP_TOOL_PREFIX}* names are live Cursor MCP bridge tool names only when exposed in the current run.`,
   `Call the ${MANIFEST_BRIDGE_MCP_TOOL_PREFIX}* MCP tool name, not the agent tool name from request history.`,
   'Bridged calls return OpenAI tool_calls to the agent; Manifest does not execute tools on the backend.',
   'On the next request, send role:tool messages with matching tool_call_id to resume the same Cursor SDK run.',
-  'Cursor-native host tools and configured MCP servers are separate from the manifest bridge.',
 ] as const;
 
-export function getManifestBridgeContractText(): string {
-  return MANIFEST_BRIDGE_CONTRACT_LINES.join('\n');
+const MANIFEST_BRIDGE_CONTRACT_BRIDGE_ACTIVE_TAIL =
+  'Agent execution uses manifest__* bridge tools only; Cursor host tools are not part of this integration.';
+
+const MANIFEST_BRIDGE_CONTRACT_DEFAULT_TAIL =
+  'Cursor-native host tools and configured MCP servers are separate from the manifest bridge.';
+
+export interface ManifestBridgeContractOptions {
+  bridgeToolsActive?: boolean;
+}
+
+export function getManifestBridgeContractText(options: ManifestBridgeContractOptions = {}): string {
+  const tail = options.bridgeToolsActive
+    ? MANIFEST_BRIDGE_CONTRACT_BRIDGE_ACTIVE_TAIL
+    : MANIFEST_BRIDGE_CONTRACT_DEFAULT_TAIL;
+  return [...MANIFEST_BRIDGE_CONTRACT_BASE_LINES, tail].join('\n');
 }
 
 function formatPromptGuidelines(

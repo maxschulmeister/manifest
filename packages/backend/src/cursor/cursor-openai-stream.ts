@@ -42,6 +42,26 @@ export function extractAssistantTextFromSdkMessage(message: SDKMessage): string 
     .join('');
 }
 
+/**
+ * Cursor run.stream() assistant events are often cumulative snapshots; onDelta chunks are
+ * usually incremental. Emit only the suffix that extends the text already sent to the client.
+ */
+export function computeAssistantStreamDelta(
+  previousFullText: string,
+  chunk: string,
+): { delta: string; nextFullText: string } {
+  if (!chunk) {
+    return { delta: '', nextFullText: previousFullText };
+  }
+  if (chunk.startsWith(previousFullText)) {
+    return {
+      delta: chunk.slice(previousFullText.length),
+      nextFullText: chunk,
+    };
+  }
+  return { delta: chunk, nextFullText: previousFullText + chunk };
+}
+
 export function buildOpenAiChatCompletion(
   model: string,
   content: string,

@@ -34,6 +34,7 @@ import {
   startManifestCursorLiveRun,
   waitForBridgeToolOrLiveRunDone,
   waitForManifestLiveRunProgress,
+  type ManifestCursorLiveSdkRun,
 } from './adapted/manifest-cursor-live-run';
 import type { ManifestBridgeToolRequest } from './adapted/manifest-tool-bridge-types';
 import { getManifestToolBridgeRegistry } from './adapted/manifest-tool-bridge-server';
@@ -58,6 +59,7 @@ import {
 import {
   buildOpenAiChatCompletion,
   buildOpenAiSseStream,
+  computeAssistantStreamDelta,
   estimateUsage,
   extractAssistantTextFromSdkMessage,
   manifestBridgeRequestsToOpenAiToolCalls,
@@ -231,7 +233,7 @@ export class CursorProxyService implements OnModuleDestroy {
     liveRun.bridgeRun.resolveToolResults(toolResults);
 
     if (opts.stream) {
-      return this.streamLiveRunUntilDone(liveRun, opts, manifestModelId, '');
+      return this.streamLiveRunUntilDone(liveRun, opts, manifestModelId, '', liveRun.sdkRun);
     }
 
     const result = await this.collectLiveRunUntilDone(liveRun, opts.signal);
@@ -361,6 +363,7 @@ export class CursorProxyService implements OnModuleDestroy {
     signal?: AbortSignal,
   ): Promise<RunTextResult> {
     let text = '';
+    let streamedAssistantSnapshot = '';
     const bridgeRequests: ManifestBridgeToolRequest[] = [];
     const iterator = run.stream()[Symbol.asyncIterator]();
     let pendingStream = iterator.next();
@@ -396,7 +399,12 @@ export class CursorProxyService implements OnModuleDestroy {
       if (raced.value.done) break collectLoop;
 
       pendingStream = iterator.next();
-      const delta = extractAssistantTextFromSdkMessage(raced.value.value as SDKMessage);
+      const extracted = extractAssistantTextFromSdkMessage(raced.value.value as SDKMessage);
+      const { delta, nextFullText } = computeAssistantStreamDelta(
+        streamedAssistantSnapshot,
+        extracted,
+      );
+      streamedAssistantSnapshot = nextFullText;
       if (delta) text += delta;
     }
 
@@ -421,7 +429,7 @@ export class CursorProxyService implements OnModuleDestroy {
     opts: CursorForwardOptions,
     manifestModelId: string,
     promptText: string,
-    run?: Awaited<ReturnType<SDKAgent['send']>>,
+    run?: ManifestCursorLiveSdkRun,
   ): Promise<ForwardResult> {
     if (opts.signal?.aborted) {
       throw new Error('Request aborted');
@@ -433,6 +441,14 @@ export class CursorProxyService implements OnModuleDestroy {
 
     const stream = new ReadableStream<Uint8Array>({
       start: async (controller) => {
+        let emittedIncrementalText = false;
+        let streamedAssistantSnapshot = liveRun.emittedAssistantPrefix;
+        if (streamedAssistantSnapshot.length > 0) {
+          emittedIncrementalText = true;
+        }
+        const recordAssistantSnapshot = (): void => {
+          liveRun.emittedAssistantPrefix = streamedAssistantSnapshot;
+        };
         try {
           controller.enqueue(
             encoder.encode(
@@ -447,13 +463,59 @@ export class CursorProxyService implements OnModuleDestroy {
           );
 
           if (run) {
-            for await (const event of run.stream()) {
+            const iterator = run.stream()[Symbol.asyncIterator]();
+            let pendingStream = iterator.next();
+
+            streamCollectLoop: while (true) {
               if (opts.signal?.aborted) {
                 await run.cancel().catch(() => undefined);
                 throw new Error('Request aborted');
               }
-              const delta = extractAssistantTextFromSdkMessage(event);
+
+              const bridgeBatch = collectManifestBridgeToolBatch(liveRun);
+              if (bridgeBatch.length > 0) {
+                recordAssistantSnapshot();
+                await this.enqueueToolCallChunks(
+                  controller,
+                  encoder,
+                  id,
+                  created,
+                  manifestModelId,
+                  bridgeBatch,
+                  promptText,
+                );
+                return;
+              }
+
+              let raced: { kind: 'stream'; value: IteratorResult<unknown> } | { kind: 'tick' };
+              try {
+                raced = await Promise.race([
+                  pendingStream.then((value) => ({ kind: 'stream' as const, value })),
+                  waitForBridgeToolOrLiveRunDone(liveRun, opts.signal).then(() => ({
+                    kind: 'tick' as const,
+                  })),
+                ]);
+              } catch (error) {
+                if (error instanceof ManifestCursorLiveRunAbortError || opts.signal?.aborted) {
+                  await run.cancel().catch(() => undefined);
+                  throw new Error('Request aborted');
+                }
+                throw error;
+              }
+
+              if (raced.kind === 'tick') continue;
+
+              if (raced.value.done) break streamCollectLoop;
+
+              pendingStream = iterator.next();
+              const extracted = extractAssistantTextFromSdkMessage(raced.value.value as SDKMessage);
+              const { delta, nextFullText } = computeAssistantStreamDelta(
+                streamedAssistantSnapshot,
+                extracted,
+              );
+              streamedAssistantSnapshot = nextFullText;
               if (delta) {
+                emittedIncrementalText = true;
                 controller.enqueue(
                   encoder.encode(
                     `data: ${JSON.stringify({
@@ -466,22 +528,11 @@ export class CursorProxyService implements OnModuleDestroy {
                   ),
                 );
               }
-              const bridgeBatch = collectManifestBridgeToolBatch(liveRun);
-              if (bridgeBatch.length > 0) {
-                await this.enqueueToolCallChunks(
-                  controller,
-                  encoder,
-                  id,
-                  created,
-                  manifestModelId,
-                  bridgeBatch,
-                  promptText,
-                );
-                return;
-              }
             }
+
             const trailingBridgeBatch = collectManifestBridgeToolBatch(liveRun);
             if (trailingBridgeBatch.length > 0) {
+              recordAssistantSnapshot();
               await this.enqueueToolCallChunks(
                 controller,
                 encoder,
@@ -499,22 +550,31 @@ export class CursorProxyService implements OnModuleDestroy {
             await waitForManifestLiveRunProgress(liveRun, opts.signal);
             while (peekManifestLiveEvent(liveRun)?.type === 'text-delta') {
               const event = shiftManifestLiveEvent(liveRun);
-              if (event?.type === 'text-delta') {
-                controller.enqueue(
-                  encoder.encode(
-                    `data: ${JSON.stringify({
-                      id,
-                      object: 'chat.completion.chunk',
-                      created,
-                      model: manifestModelId,
-                      choices: [{ index: 0, delta: { content: event.text }, finish_reason: null }],
-                    })}\n\n`,
-                  ),
-                );
-              }
+              if (event?.type !== 'text-delta') continue;
+              // onDelta mirrors run.stream(); skip re-emitting when the SDK run was consumed above.
+              if (run && emittedIncrementalText) continue;
+              const { delta, nextFullText } = computeAssistantStreamDelta(
+                streamedAssistantSnapshot,
+                event.text,
+              );
+              streamedAssistantSnapshot = nextFullText;
+              if (!delta) continue;
+              emittedIncrementalText = true;
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({
+                    id,
+                    object: 'chat.completion.chunk',
+                    created,
+                    model: manifestModelId,
+                    choices: [{ index: 0, delta: { content: delta }, finish_reason: null }],
+                  })}\n\n`,
+                ),
+              );
             }
             const bridgeBatch = collectManifestBridgeToolBatch(liveRun);
             if (bridgeBatch.length > 0) {
+              recordAssistantSnapshot();
               await this.enqueueToolCallChunks(
                 controller,
                 encoder,
@@ -530,6 +590,7 @@ export class CursorProxyService implements OnModuleDestroy {
 
           const finalBridgeBatch = collectManifestBridgeToolBatch(liveRun);
           if (finalBridgeBatch.length > 0) {
+            recordAssistantSnapshot();
             await this.enqueueToolCallChunks(
               controller,
               encoder,
@@ -544,7 +605,9 @@ export class CursorProxyService implements OnModuleDestroy {
 
           const text = liveRun.textDeltas.join('');
           const usage = estimateUsage(promptText, text);
-          if (text) {
+          recordAssistantSnapshot();
+          if (text && !emittedIncrementalText && text.length > streamedAssistantSnapshot.length) {
+            const trailing = text.slice(streamedAssistantSnapshot.length);
             controller.enqueue(
               encoder.encode(
                 `data: ${JSON.stringify({
@@ -552,7 +615,7 @@ export class CursorProxyService implements OnModuleDestroy {
                   object: 'chat.completion.chunk',
                   created,
                   model: manifestModelId,
-                  choices: [{ index: 0, delta: { content: text }, finish_reason: null }],
+                  choices: [{ index: 0, delta: { content: trailing }, finish_reason: null }],
                 })}\n\n`,
               ),
             );

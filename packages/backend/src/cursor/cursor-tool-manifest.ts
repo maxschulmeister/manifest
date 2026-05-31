@@ -2,7 +2,9 @@
  * Adapted from pi-cursor-sdk cursor-tool-manifest.ts (MIT). See adapted/ATTRIBUTION.md.
  */
 import type { ManifestToolBridgeSnapshot } from './adapted/manifest-tool-bridge-types';
+import { formatBridgedToolSchemaHint } from './adapted/manifest-tool-bridge-schema';
 
+/** Retained for tests/docs; not advertised to the model when the pi bridge is active. */
 export const CURSOR_HOST_TOOL_MANIFEST_SUMMARY =
   'read, shell, grep, glob, ls, edit, write, delete, readLints, updateTodos, createPlan, task, generateImage, mcp, semSearch, recordScreen, and web search/fetch when exposed';
 
@@ -13,22 +15,35 @@ export function buildCursorToolManifestText(
   } = {},
 ): string {
   const bridgeEnabled = options.bridgeEnabled ?? true;
+  const bridgeTools = options.bridgeSnapshot?.tools ?? [];
+
+  if (!bridgeEnabled) {
+    return ['Callable tool surfaces this run:', '- Manifest bridge: disabled.'].join('\n');
+  }
+
+  if (bridgeTools.length === 0) {
+    return [
+      'Callable tool surfaces this run:',
+      '- Manifest bridge: no manifest__* tools exposed this run.',
+      '- Reply with text only.',
+    ].join('\n');
+  }
+
+  const names = [...bridgeTools.map((tool) => tool.mcpToolName)].sort().join(', ');
   const lines = [
     'Callable tool surfaces this run:',
-    `- Cursor SDK host tools (callable; not listed in MCP listTools): ${CURSOR_HOST_TOOL_MANIFEST_SUMMARY}.`,
-    '- Configured Cursor MCP servers: discovered at runtime via MCP listTools (depends on Cursor settings).',
+    `- Agent tools (manifest__* MCP only): ${names}.`,
+    '- Cursor host tools are not available in this Manifest integration.',
+    '- Agent tools execute in pi on the user machine; Manifest only forwards tool_calls.',
+    '- Use exact JSON property names from each tool schema below — do not substitute Cursor-native names.',
+    '- Not callable: replay IDs and transcript labels.',
+    'Bridged tool schemas:',
   ];
-  const bridgeTools = options.bridgeSnapshot?.tools ?? [];
-  if (!bridgeEnabled) {
-    lines.push('- Manifest bridge: disabled.');
-  } else if (bridgeTools.length === 0) {
-    lines.push('- Manifest bridge: no manifest__* tools exposed this run.');
-  } else {
-    const names = [...bridgeTools.map((tool) => tool.mcpToolName)].sort().join(', ');
-    lines.push(
-      `- Manifest bridge (call manifest__* MCP names; agent uses real tool names): ${names}.`,
-    );
+  for (const tool of [...bridgeTools].sort((a, b) =>
+    a.agentToolName.localeCompare(b.agentToolName),
+  )) {
+    lines.push(`${tool.mcpToolName} (agent: ${tool.agentToolName}):`);
+    lines.push(formatBridgedToolSchemaHint(tool.inputSchema));
   }
-  lines.push('- Not callable: replay IDs and transcript labels.');
   return lines.join('\n');
 }

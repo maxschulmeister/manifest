@@ -140,20 +140,18 @@ export function buildBootstrapCursorPrompt(
     const formatted = formatOpenAiMessage(msg);
     if (formatted) sections.push(formatted);
   }
-  sections.push(getManifestBridgeContractText());
+  const hasBridgeTools = (options.bridgeSnapshot?.tools.length ?? 0) > 0;
+  sections.push(getManifestBridgeContractText({ bridgeToolsActive: hasBridgeTools }));
   sections.push(
     buildCursorToolManifestText({
       bridgeSnapshot: options.bridgeSnapshot,
       bridgeEnabled: options.bridgeEnabled,
     }),
   );
-  const hasBridgeTools = (options.bridgeSnapshot?.tools.length ?? 0) > 0;
   if (hasBridgeTools) {
     sections.push(
-      'Call only manifest__* MCP tools exposed this run when you need agent tools. Manifest returns tool_calls to the agent; do not assume backend execution.',
+      'When you need agent tools, call only manifest__* MCP tools listed above. Manifest returns tool_calls to the agent; do not assume Manifest executes tools.',
     );
-  } else {
-    sections.push('Answer using text only when no manifest__ bridge tools are exposed.');
   }
   return {
     text: sections.join(SECTION_SEPARATOR),
