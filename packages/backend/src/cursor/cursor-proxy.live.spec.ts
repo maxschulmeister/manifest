@@ -1,7 +1,11 @@
 /**
- * Live Cursor SDK integration tests. Requires CURSOR_API_KEY in the environment.
- * Run: CURSOR_API_KEY=... npm test -- --testPathPattern=cursor-proxy.live
+ * Live Cursor SDK integration tests. Requires CURSOR_API_KEY in packages/backend/.env.
+ * Run from packages/backend:
+ *   npm test -- --testPathPattern=cursor-proxy.live --testNamePattern="reports all three"
  */
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { config as loadEnv } from 'dotenv';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { disposeAllSessionCursorAgents } from './adapted/cursor-session-agent';
@@ -17,7 +21,18 @@ import {
 import { buildCursorSessionPoolKey } from './cursor-session-pool';
 import { CursorProxyService } from './cursor-proxy.service';
 
+const liveEnvPath = resolve(__dirname, '../../.env');
+if (existsSync(liveEnvPath)) {
+  loadEnv({ path: liveEnvPath, override: true, quiet: true });
+}
+
 const apiKey = process.env.CURSOR_API_KEY?.trim();
+if (!apiKey) {
+  console.warn(
+    `Skipping live Cursor tests: CURSOR_API_KEY missing. Set it in ${liveEnvPath} ` +
+      '(dotenv override: true; empty shell values are replaced).',
+  );
+}
 const describeLive = apiKey ? describe : describe.skip;
 
 const LIVE_MODEL = process.env.CURSOR_LIVE_MODEL?.trim() || 'cursor/composer-2.5';
@@ -36,6 +51,33 @@ const bashTool = {
     },
   },
 };
+
+const LIVE_BRIDGE_TOOL_NAMES = ['live_weather_lookup', 'live_send_email', 'live_calc_sum'] as const;
+
+function makeFunctionTool(name: string, description: string) {
+  return {
+    type: 'function' as const,
+    function: {
+      name,
+      description,
+      parameters: {
+        type: 'object',
+        properties: {},
+      },
+    },
+  };
+}
+
+const liveBridgeTools = LIVE_BRIDGE_TOOL_NAMES.map((name) =>
+  makeFunctionTool(name, `Integration-test tool: ${name}`),
+);
+
+function expectContentListsToolNames(content: string, toolNames: readonly string[]): void {
+  const normalized = content.toLowerCase();
+  for (const name of toolNames) {
+    expect(normalized).toContain(name.toLowerCase());
+  }
+}
 
 function fireBridgeBashToolCall(url: string): void {
   const client = new Client({ name: 'manifest-live-test', version: '1.0.0' });
@@ -152,6 +194,43 @@ describeLive('CursorProxyService (live Cursor SDK)', () => {
         choices: Array<{ message: { content: string } }>;
       };
       expect(secondJson.choices[0]?.message?.content).toContain('Live resume after tool');
+    },
+    LIVE_TIMEOUT_MS,
+  );
+
+  it(
+    'reports all three bridged agent tools when asked what tools are available',
+    async () => {
+      const service = new CursorProxyService();
+      const result = await service.forward({
+        provider: 'cursor',
+        apiKey: apiKey!,
+        model: 'cursor/auto',
+        body: {
+          messages: [
+            {
+              role: 'user',
+              content: [
+                'What manifest bridge agent tool function names do you have available in this run?',
+                'List every bridged agent tool name (not Cursor SDK host tools).',
+                'Reply in plain text with one tool name per line.',
+              ].join(' '),
+            },
+          ],
+          tools: [...liveBridgeTools],
+        },
+        stream: false,
+        agentId: 'live-agent',
+        sessionKey: `live-tool-manifest-${Date.now()}`,
+      });
+
+      expect(result.response.ok).toBe(true);
+      const json = (await result.response.json()) as {
+        choices: Array<{ message: { content: string } }>;
+      };
+      const content = json.choices[0]?.message?.content ?? '';
+      expect(content.length).toBeGreaterThan(0);
+      expectContentListsToolNames(content, LIVE_BRIDGE_TOOL_NAMES);
     },
     LIVE_TIMEOUT_MS,
   );
