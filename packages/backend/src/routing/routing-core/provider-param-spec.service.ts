@@ -22,6 +22,11 @@ import {
   type ProviderParamSpecCatalog,
 } from 'manifest-shared';
 import { MPS_CATALOG_SNAPSHOT } from './mps-catalog-snapshot';
+import {
+  buildCursorParamSpecs,
+  isCursorProviderModel,
+  listCursorParamModelIds,
+} from '../../cursor/cursor-param-spec';
 
 const MODEL_PARAMETERS_API = 'https://modelparams.dev/api/v1/models.json';
 const FETCH_TIMEOUT_MS = 10000;
@@ -104,7 +109,8 @@ export class ProviderParamSpecService implements OnModuleInit {
    * downloading the whole catalog.
    */
   listModelIds(): Array<{ provider: string; authType: AuthType; model: string }> {
-    return this.specs.map((entry) => {
+    const cursorIds = listCursorParamModelIds();
+    const fromCatalog = this.specs.map((entry) => {
       const provider = normalizeProviderParamProviderId(entry.provider);
       return {
         provider,
@@ -112,6 +118,17 @@ export class ProviderParamSpecService implements OnModuleInit {
         model: entry.model,
       };
     });
+    const seen = new Set(
+      fromCatalog.map((entry) => `${entry.provider}\0${entry.authType}\0${entry.model}`),
+    );
+    for (const entry of cursorIds) {
+      const key = `${entry.provider}\0${entry.authType}\0${entry.model}`;
+      if (!seen.has(key)) {
+        fromCatalog.push(entry);
+        seen.add(key);
+      }
+    }
+    return fromCatalog;
   }
 
   async getSpecs(
@@ -119,6 +136,9 @@ export class ProviderParamSpecService implements OnModuleInit {
     authType: AuthType | undefined,
     model: string | undefined,
   ): Promise<readonly ProviderParamSpec[]> {
+    if (isCursorProviderModel(providerId, authType, model)) {
+      return buildCursorParamSpecs(model!);
+    }
     return getProviderParamSpecs(this.specs, providerId, authType, model);
   }
 

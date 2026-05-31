@@ -48,7 +48,13 @@ import {
   cursorPromptToSdkUserMessage,
   openAiMessagesToContext,
 } from './cursor-message-converter';
-import { parseCursorManifestModel } from './cursor-param-mapper';
+import {
+  buildCursorModelSelection,
+  extractCursorRouteParams,
+  parseCursorManifestModel,
+  resolveCursorAgentMode,
+  stripCursorRouteParams,
+} from './cursor-param-mapper';
 import {
   buildOpenAiChatCompletion,
   buildOpenAiSseStream,
@@ -101,11 +107,15 @@ export class CursorProxyService implements OnModuleDestroy {
 
       const conversationId = resolveCursorConversationId(opts.sessionKey, opts.extraHeaders);
       const scopeKey = buildCursorSessionPoolKey(opts.agentId, apiKey, conversationId);
-      const context = openAiMessagesToContext(opts.body);
-      const { selection, manifestModelId } = parseCursorManifestModel(opts.model);
+      const routeParams = extractCursorRouteParams(opts.body);
+      const agentMode = resolveCursorAgentMode(routeParams);
+      const strippedBody = stripCursorRouteParams(opts.body);
+      const context = openAiMessagesToContext(strippedBody);
+      const { manifestModelId } = parseCursorManifestModel(opts.model);
+      const selection = buildCursorModelSelection(manifestModelId, routeParams);
       const cwd = process.env.CURSOR_SDK_CWD ?? process.cwd();
 
-      const bridgeSnapshot = buildManifestToolBridgeSnapshotFromOpenAiTools(opts.body.tools);
+      const bridgeSnapshot = buildManifestToolBridgeSnapshotFromOpenAiTools(strippedBody.tools);
       const bridgeSurfaceSignature = buildManifestToolBridgeSurfaceSignature(bridgeSnapshot);
       const bridgeEnabled = bridgeSnapshot.tools.length > 0;
 
@@ -128,7 +138,7 @@ export class CursorProxyService implements OnModuleDestroy {
         apiKey,
         cwd,
         modelSelection: selection,
-        agentMode: 'agent',
+        agentMode,
         bridgeSurfaceSignature,
         bridgeRun,
         onBridgeToolRequest: (request) => {
@@ -151,7 +161,7 @@ export class CursorProxyService implements OnModuleDestroy {
           apiKey,
           cwd,
           modelSelection: selection,
-          agentMode: 'agent',
+          agentMode,
           bridgeSurfaceSignature,
           bridgeRun: freshBridgeRun,
           onBridgeToolRequest: (request) => {
@@ -289,8 +299,13 @@ export class CursorProxyService implements OnModuleDestroy {
       );
     }
 
+    const routeParams = extractCursorRouteParams(opts.body);
+    const agentMode = resolveCursorAgentMode(routeParams);
+    const selection = buildCursorModelSelection(manifestModelId, routeParams);
+
     const run = await lease.agent.send(sdkMessage, {
-      model: parseCursorManifestModel(opts.model).selection,
+      model: selection,
+      mode: agentMode,
       onDelta: (args) => this.handleSdkDelta(liveRun, args.update),
     });
     attachManifestCursorLiveSdkRun(liveRun, run);

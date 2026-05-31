@@ -38,6 +38,7 @@
     "test": "turbo test",
     "start": "node packages/backend/dist/main.js",
     "check:api-prefix": "node scripts/check-api-prefix.js",
+    "refresh:cursor-snapshots": "node scripts/refresh-cursor-model-snapshots.mjs",
     "lint": "eslint packages/shared/src packages/backend/src packages/frontend/src",
     "format": "prettier --write 'packages/*/src/**/*.{ts,tsx,css}'",
     "changeset": "changeset",

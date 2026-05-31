@@ -161,6 +161,45 @@ describe('ModelController', () => {
     });
   });
 
+  describe('syncCursor', () => {
+    it('refreshes cursor models and recalculates tiers when discovery succeeds', async () => {
+      mockDiscoveryService.refreshProvider.mockResolvedValue({
+        ok: true,
+        model_count: 12,
+        last_fetched_at: '2026-05-31T00:00:00.000Z',
+        error: null,
+      });
+
+      const result = await controller.syncCursor(mockUser, mockAgentName);
+
+      expect(mockDiscoveryService.refreshProvider).toHaveBeenCalledWith(
+        TEST_AGENT_ID,
+        'cursor',
+        'subscription',
+      );
+      expect(mockProviderService.recalculateTiers).toHaveBeenCalledWith(TEST_AGENT_ID);
+      expect(result).toEqual({
+        ok: true,
+        model_count: 12,
+        last_fetched_at: '2026-05-31T00:00:00.000Z',
+        error: null,
+      });
+    });
+
+    it('skips tier recalculation when cursor refresh fails', async () => {
+      mockDiscoveryService.refreshProvider.mockResolvedValue({
+        ok: false,
+        model_count: 0,
+        last_fetched_at: null,
+        error: 'Provider not found',
+      });
+
+      await controller.syncCursor(mockUser, mockAgentName);
+
+      expect(mockProviderService.recalculateTiers).not.toHaveBeenCalled();
+    });
+  });
+
   /* ── refreshModels ── */
 
   describe('refreshModels', () => {

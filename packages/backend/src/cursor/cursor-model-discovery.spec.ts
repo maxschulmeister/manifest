@@ -43,7 +43,12 @@ describe('discoverCursorModels', () => {
       {
         id: 'composer-2.5',
         displayName: 'Composer 2.5',
-        variants: [{ params: [], displayName: 'Composer 2.5', isDefault: true }],
+        parameters: [
+          { id: 'fast', displayName: 'Fast', values: [{ value: 'false' }, { value: 'true' }] },
+        ],
+        variants: [
+          { params: [{ id: 'fast', value: 'true' }], displayName: 'Composer 2.5', isDefault: true },
+        ],
       },
     ]);
     const models = await discoverCursorModels('cursor-key-123');

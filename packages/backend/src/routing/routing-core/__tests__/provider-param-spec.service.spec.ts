@@ -116,10 +116,14 @@ describe('ProviderParamSpecService', () => {
     const service = new ProviderParamSpecService();
     await service.refreshCache();
 
-    expect(service.listModelIds()).toEqual([
-      { provider: 'anthropic', authType: 'api_key', model: 'claude-sonnet-4-6' },
-      { provider: 'openai', authType: 'api_key', model: 'gpt-test' },
-    ]);
+    const ids = service.listModelIds();
+    expect(ids).toEqual(
+      expect.arrayContaining([
+        { provider: 'anthropic', authType: 'api_key', model: 'claude-sonnet-4-6' },
+        { provider: 'openai', authType: 'api_key', model: 'gpt-test' },
+      ]),
+    );
+    expect(ids.some((entry) => entry.provider === 'cursor')).toBe(true);
   });
 
   it('canonicalizes provider aliases when listing model identities', async () => {
@@ -150,9 +154,10 @@ describe('ProviderParamSpecService', () => {
     const service = new ProviderParamSpecService();
     await service.refreshCache();
 
-    expect(service.listModelIds()).toEqual([
-      { provider: 'zai', authType: 'subscription', model: 'glm-5' },
-    ]);
+    expect(service.listModelIds()).toEqual(
+      expect.arrayContaining([{ provider: 'zai', authType: 'subscription', model: 'glm-5' }]),
+    );
+    expect(service.listModelIds().some((entry) => entry.provider === 'cursor')).toBe(true);
   });
 
   it('sends If-None-Match and keeps the cache on a 304 response', async () => {
@@ -290,6 +295,14 @@ describe('ProviderParamSpecService', () => {
 
     await expect(service.refreshCache()).resolves.toBe(0);
     await expect(service.list()).resolves.toHaveLength(2);
+  });
+
+  it('returns cursor param specs from the bundled Cursor catalog', async () => {
+    const service = new ProviderParamSpecService();
+    const specs = await service.getSpecs('cursor', 'subscription', 'cursor/composer-2.5');
+    expect(specs.map((spec) => spec.path)).toEqual(
+      expect.arrayContaining(['cursor.mode', 'cursor.fast']),
+    );
   });
 
   describe('onModuleInit', () => {

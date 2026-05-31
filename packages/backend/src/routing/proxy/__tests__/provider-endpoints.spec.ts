@@ -142,6 +142,8 @@ describe('resolveEndpointKey', () => {
     // the `custom:<uuid>` path once connected.
     for (const entry of PROVIDER_REGISTRY) {
       if (entry.tileOnly) continue;
+      // Cursor routes through the local @cursor/sdk proxy, not PROVIDER_ENDPOINTS HTTP.
+      if (entry.id === 'cursor') continue;
       expect(resolveEndpointKey(entry.id)).not.toBeNull();
       for (const alias of entry.aliases) {
         expect(resolveEndpointKey(alias)).not.toBeNull();

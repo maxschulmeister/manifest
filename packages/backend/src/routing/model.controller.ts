@@ -85,6 +85,16 @@ export class ModelController {
     return this.ollamaSync.sync();
   }
 
+  @Post(':agentName/cursor/sync')
+  async syncCursor(@CurrentUser() user: AuthUser, @Param() params: AgentNameParamDto) {
+    const agent = await this.resolveAgentService.resolve(user.id, params.agentName);
+    const result = await this.discoveryService.refreshProvider(agent.id, 'cursor', 'subscription');
+    if (result.ok) {
+      await this.providerService.recalculateTiers(agent.id);
+    }
+    return result;
+  }
+
   @Get(':agentName/available-models')
   async getAvailableModels(@CurrentUser() user: AuthUser, @Param() params: AgentNameParamDto) {
     const agent = await this.resolveAgentService.resolve(user.id, params.agentName);

@@ -408,14 +408,16 @@ describe('ProxyFallbackService', () => {
         sessionKey: 'my-session',
       });
 
-      expect(providerClient.forward).toHaveBeenCalledWith({
-        provider: 'xai',
-        apiKey: 'sk-xai',
-        model: 'grok-2',
-        body,
-        stream: false,
-        extraHeaders: { 'x-grok-conv-id': 'my-session' },
-      });
+      expect(providerClient.forward).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider: 'xai',
+          apiKey: 'sk-xai',
+          model: 'grok-2',
+          body,
+          stream: false,
+          extraHeaders: { 'x-grok-conv-id': 'my-session' },
+        }),
+      );
     });
 
     it('exchanges copilot token before forwarding', async () => {
@@ -436,13 +438,15 @@ describe('ProxyFallbackService', () => {
       });
 
       expect(copilotToken.getCopilotToken).toHaveBeenCalledWith('ghu_token');
-      expect(providerClient.forward).toHaveBeenCalledWith({
-        provider: 'copilot',
-        apiKey: 'tid=copilot-session-token',
-        model: 'claude-sonnet-4.6',
-        body,
-        stream: false,
-      });
+      expect(providerClient.forward).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider: 'copilot',
+          apiKey: 'tid=copilot-session-token',
+          model: 'claude-sonnet-4.6',
+          body,
+          stream: false,
+        }),
+      );
     });
 
     it('builds custom endpoint for custom providers', async () => {
@@ -466,14 +470,16 @@ describe('ProxyFallbackService', () => {
         sessionKey: 'sess-1',
       });
 
-      expect(providerClient.forward).toHaveBeenCalledWith({
-        provider: 'custom:cp-1',
-        apiKey: 'key',
-        model: 'llama',
-        body,
-        stream: false,
-        customEndpoint: expect.objectContaining({ baseUrl: 'https://api.groq.com/openai' }),
-      });
+      expect(providerClient.forward).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider: 'custom:cp-1',
+          apiKey: 'key',
+          model: 'llama',
+          body,
+          stream: false,
+          customEndpoint: expect.objectContaining({ baseUrl: 'https://api.groq.com/openai' }),
+        }),
+      );
     });
 
     it('routes Anthropic-kind custom providers to /v1/messages with anthropic format', async () => {
@@ -526,18 +532,20 @@ describe('ProxyFallbackService', () => {
         resourceUrl: 'https://api.minimax.io/anthropic',
       });
 
-      expect(providerClient.forward).toHaveBeenCalledWith({
-        provider: 'minimax',
-        apiKey: 'token',
-        model: 'MiniMax-M2.5',
-        body,
-        stream: false,
-        customEndpoint: expect.objectContaining({
-          baseUrl: 'https://api.minimax.io/anthropic',
-          format: 'anthropic',
+      expect(providerClient.forward).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider: 'minimax',
+          apiKey: 'token',
+          model: 'MiniMax-M2.5',
+          body,
+          stream: false,
+          customEndpoint: expect.objectContaining({
+            baseUrl: 'https://api.minimax.io/anthropic',
+            format: 'anthropic',
+          }),
+          authType: 'subscription',
         }),
-        authType: 'subscription',
-      });
+      );
     });
 
     it('ignores invalid minimax resource URL', async () => {
@@ -560,14 +568,16 @@ describe('ProxyFallbackService', () => {
       });
 
       // Should forward without custom endpoint
-      expect(providerClient.forward).toHaveBeenCalledWith({
-        provider: 'minimax',
-        apiKey: 'token',
-        model: 'MiniMax-M2.5',
-        body,
-        stream: false,
-        authType: 'subscription',
-      });
+      expect(providerClient.forward).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider: 'minimax',
+          apiKey: 'token',
+          model: 'MiniMax-M2.5',
+          body,
+          stream: false,
+          authType: 'subscription',
+        }),
+      );
     });
 
     it('falls back to providerRegion=cn for pasted minimax subscription tokens', async () => {

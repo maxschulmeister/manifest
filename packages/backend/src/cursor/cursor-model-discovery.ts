@@ -2,6 +2,7 @@ import type { ModelListItem, ModelParameterDefinition } from '@cursor/sdk';
 import { Cursor } from '@cursor/sdk';
 import { DiscoveredModel } from '../model-discovery/model-fetcher';
 import { FALLBACK_MODEL_ITEMS } from './cursor-fallback-models.generated';
+import { registerCursorModelCatalog } from './cursor-model-metadata';
 
 const CURSOR_PROVIDER_ID = 'cursor';
 const FALLBACK_CONTEXT_WINDOW = 128_000;
@@ -133,6 +134,7 @@ export async function discoverCursorModels(apiKey: string): Promise<DiscoveredMo
   try {
     const items = await Cursor.models.list({ apiKey: trimmed });
     if (!items.length) return [];
+    registerCursorModelCatalog(items);
     return expandModelListItems(items);
   } catch {
     return [];

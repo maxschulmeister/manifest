@@ -792,6 +792,24 @@ describe('PlaygroundService.runStream', () => {
     expect(forwardArgs.stream).toBe(true);
   });
 
+  it('passes agentId and sessionKey when forwarding to the Cursor provider', async () => {
+    const { service, mocks } = buildService();
+    mocks.providerClient.forward.mockResolvedValue(
+      okStream(['data: {"usage":{"prompt_tokens":0,"completion_tokens":0}}\n\n']),
+    );
+    const res = mockRes();
+
+    await service.runStream(
+      USER_ID,
+      makeDto({ provider: 'cursor', model: 'cursor/composer-2.5', authType: 'subscription' }),
+      asRes(res),
+    );
+
+    const forwardArgs = mocks.providerClient.forward.mock.calls[0][0];
+    expect(forwardArgs.agentId).toBe(AGENT.id);
+    expect(forwardArgs.sessionKey).toBe(`playground:${AGENT.id}`);
+  });
+
   it('send() is a no-op once the response has ended (no write after end)', async () => {
     const { service, mocks } = buildService();
     // Stream that ends the response itself before the done event would be sent.

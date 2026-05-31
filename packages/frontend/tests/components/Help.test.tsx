@@ -44,4 +44,11 @@ describe("Help", () => {
     const contactLink = links.find((l) => l.textContent?.includes("Contact"));
     expect(contactLink).toBeDefined();
   });
+
+  it("documents Cursor provider behavior", () => {
+    render(() => <Help />);
+    expect(screen.getByText("Cursor provider")).toBeDefined();
+    expect(screen.getByText("Agent tool bridge")).toBeDefined();
+    expect(document.body.textContent).toContain("manifest__");
+  });
 });

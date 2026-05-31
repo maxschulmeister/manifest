@@ -109,6 +109,8 @@ export class PlaygroundService {
         extraHeaders,
         customEndpoint,
         signal: abort.signal,
+        agentId: agent.id,
+        sessionKey: `playground:${agent.id}`,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
