@@ -11,6 +11,21 @@ describe('cursor-model-metadata', () => {
     registerCursorModelCatalog([]);
   });
 
+  it('serves bundled fallback metadata when the live overlay is cleared', () => {
+    registerCursorModelCatalog([
+      {
+        id: 'ephemeral-only',
+        displayName: 'Ephemeral',
+        variants: [{ params: [], displayName: 'Ephemeral', isDefault: true }],
+      },
+    ]);
+    expect(getCursorModelMetadata('cursor/ephemeral-only')).toBeDefined();
+
+    registerCursorModelCatalog([]);
+    expect(getCursorModelMetadata('cursor/ephemeral-only')).toBeUndefined();
+    expect(getCursorModelMetadata('cursor/composer-2.5')).toBeDefined();
+  });
+
   it('registers context variants with correct context windows', () => {
     registerCursorModelCatalog([
       {

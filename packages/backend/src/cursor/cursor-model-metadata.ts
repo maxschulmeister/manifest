@@ -28,8 +28,12 @@ export interface CursorModelMetadata {
   };
 }
 
-const metadataByManifestModelId = new Map<string, CursorModelMetadata>();
 const FALLBACK_CONTEXT_WINDOW = 128_000;
+
+type MetadataCatalog = ReadonlyMap<string, CursorModelMetadata>;
+
+const CURSOR_FALLBACK_CATALOG: MetadataCatalog = buildMetadataCatalog(FALLBACK_MODEL_ITEMS);
+let liveMetadataCatalog: MetadataCatalog | null = null;
 
 function cloneParams(params: ModelParameterValue[]): ModelParameterValue[] {
   return params.map((param) => ({ ...param }));
@@ -216,8 +220,8 @@ function toMetadata(
   };
 }
 
-function registerModelItems(items: ModelListItem[]): void {
-  metadataByManifestModelId.clear();
+function buildMetadataCatalog(items: ModelListItem[]): MetadataCatalog {
+  const metadataByManifestModelId = new Map<string, CursorModelMetadata>();
   const usedManifestIds = new Set<string>();
   const reservedBaseModelIds = new Set(items.map((item) => item.id));
   const ambiguousAliases = getAmbiguousAliases(items);
@@ -240,21 +244,34 @@ function registerModelItems(items: ModelListItem[]): void {
       }
     }
   }
+
+  return metadataByManifestModelId;
+}
+
+function normalizeManifestModelId(manifestModelId: string): string {
+  return manifestModelId.startsWith(CURSOR_PROVIDER_PREFIX)
+    ? manifestModelId
+    : `${CURSOR_PROVIDER_PREFIX}${manifestModelId}`;
 }
 
 export function getCursorModelMetadata(manifestModelId: string): CursorModelMetadata | undefined {
-  const normalized = manifestModelId.startsWith(CURSOR_PROVIDER_PREFIX)
-    ? manifestModelId
-    : `${CURSOR_PROVIDER_PREFIX}${manifestModelId}`;
-  return metadataByManifestModelId.get(normalized);
+  const normalized = normalizeManifestModelId(manifestModelId);
+  return liveMetadataCatalog?.get(normalized) ?? CURSOR_FALLBACK_CATALOG.get(normalized);
 }
 
+/** Replaces the live overlay from a successful Cursor.models.list result; pass [] to clear it. */
 export function registerCursorModelCatalog(items: ModelListItem[]): void {
-  registerModelItems(items);
+  liveMetadataCatalog = items.length > 0 ? buildMetadataCatalog(items) : null;
 }
 
 export function listCursorModelMetadata(): CursorModelMetadata[] {
-  return [...metadataByManifestModelId.values()].map((metadata) => ({
+  const merged = new Map(CURSOR_FALLBACK_CATALOG);
+  if (liveMetadataCatalog) {
+    for (const [manifestModelId, metadata] of liveMetadataCatalog) {
+      merged.set(manifestModelId, metadata);
+    }
+  }
+  return [...merged.values()].map((metadata) => ({
     ...metadata,
     defaultParams: cloneParams(metadata.defaultParams),
     ...(metadata.thinkingLevelMap ? { thinkingLevelMap: { ...metadata.thinkingLevelMap } } : {}),
@@ -262,11 +279,10 @@ export function listCursorModelMetadata(): CursorModelMetadata[] {
   }));
 }
 
-registerCursorModelCatalog(FALLBACK_MODEL_ITEMS);
-
 export const __testUtils = {
   encodeManifestModelId,
   parseContextWindow,
   getThinkingLevelMap,
-  registerModelItems,
+  buildMetadataCatalog,
+  getFallbackCatalogSize: () => CURSOR_FALLBACK_CATALOG.size,
 };

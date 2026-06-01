@@ -1,4 +1,5 @@
 import { Cursor } from '@cursor/sdk';
+import { getCursorModelMetadata, registerCursorModelCatalog } from './cursor-model-metadata';
 import {
   buildCursorFallbackModels,
   discoverCursorModels,
@@ -26,11 +27,24 @@ describe('buildCursorFallbackModels', () => {
     );
     expect(models.some((m) => m.id === 'cursor/composer-2.5')).toBe(true);
   });
+
+  it('is deterministic and returns sorted manifest ids', () => {
+    const first = buildCursorFallbackModels();
+    const second = buildCursorFallbackModels();
+    expect(second).toEqual(first);
+    const ids = first.map((model) => model.id);
+    expect(ids).toEqual([...ids].sort((a, b) => a.localeCompare(b)));
+    expect(new Set(ids).size).toBe(ids.length);
+  });
 });
 
 describe('discoverCursorModels', () => {
   beforeEach(() => {
     mockList.mockReset();
+  });
+
+  afterEach(() => {
+    registerCursorModelCatalog([]);
   });
 
   it('returns [] for empty api key', async () => {
@@ -72,6 +86,37 @@ describe('discoverCursorModels', () => {
   it('returns [] when discovery returns empty list', async () => {
     mockList.mockResolvedValue([]);
     expect(await discoverCursorModels('key')).toEqual([]);
+  });
+
+  it('updates the live metadata overlay on success without mutating fallback expansion', async () => {
+    registerCursorModelCatalog([]);
+    const fallbackBefore = buildCursorFallbackModels().length;
+
+    mockList.mockResolvedValue([
+      {
+        id: 'live-only-model',
+        displayName: 'Live Only',
+        variants: [{ params: [], displayName: 'Live Only', isDefault: true }],
+      },
+    ]);
+    const discovered = await discoverCursorModels('cursor-key');
+    expect(discovered.map((model) => model.id)).toEqual(['cursor/live-only-model']);
+    expect(getCursorModelMetadata('cursor/live-only-model')?.displayName).toBe('Live Only');
+    expect(buildCursorFallbackModels().length).toBe(fallbackBefore);
+    expect(getCursorModelMetadata('cursor/composer-2.5')).toBeDefined();
+  });
+
+  it('does not clear the live metadata overlay when discovery fails', async () => {
+    registerCursorModelCatalog([
+      {
+        id: 'sticky-live',
+        displayName: 'Sticky',
+        variants: [{ params: [], displayName: 'Sticky', isDefault: true }],
+      },
+    ]);
+    mockList.mockRejectedValue(new Error('auth failed'));
+    expect(await discoverCursorModels('bad-key')).toEqual([]);
+    expect(getCursorModelMetadata('cursor/sticky-live')?.displayName).toBe('Sticky');
   });
 });
 

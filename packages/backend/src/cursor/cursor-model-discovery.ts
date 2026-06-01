@@ -120,7 +120,7 @@ function expandModelListItems(items: ModelListItem[]): DiscoveredModel[] {
     }
   }
 
-  return models;
+  return models.sort((a, b) => a.id.localeCompare(b.id));
 }
 
 export function buildCursorFallbackModels(): DiscoveredModel[] {
