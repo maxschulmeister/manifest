@@ -405,7 +405,7 @@ const Settings: Component = () => {
               Compress prompt content before it is sent to the model.
             </span>
           </div>
-          <div class="settings-card__control">
+          <div class="settings-card__control settings-card__control--end">
             <button
               type="button"
               class="routing-switch"
@@ -430,7 +430,7 @@ const Settings: Component = () => {
               Compress tool result payloads returned to the model.
             </span>
           </div>
-          <div class="settings-card__control">
+          <div class="settings-card__control settings-card__control--end">
             <button
               type="button"
               class="routing-switch"
@@ -459,7 +459,7 @@ const Settings: Component = () => {
               Compress model responses before they are stored or returned.
             </span>
           </div>
-          <div class="settings-card__control">
+          <div class="settings-card__control settings-card__control--end">
             <button
               type="button"
               class="routing-switch"
