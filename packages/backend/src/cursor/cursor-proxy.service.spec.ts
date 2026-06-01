@@ -490,7 +490,7 @@ describe('CursorProxyService', () => {
     expect(mockAcquire).not.toHaveBeenCalled();
     expect(result.response.ok).toBe(false);
     const json = (await result.response.json()) as { error: { message: string } };
-    expect(json.error.message).toContain('Cursor SDK run failed');
+    expect(json.error.message).toContain('did not provide provider error details');
   });
 
   it('returns error when resumed live run was cancelled after tool results', async () => {
@@ -2117,7 +2117,7 @@ describe('CursorProxyService', () => {
     expect(lease.commitSend).toHaveBeenCalledWith('fingerprint-1', true);
   });
 
-  it('marks live run error when the SDK stream throws', async () => {
+  it('streams provider errors when the SDK stream throws', async () => {
     const service = new CursorProxyService();
     const liveRun = startManifestCursorLiveRun({
       id: 'live-stream-error',
@@ -2149,7 +2149,10 @@ describe('CursorProxyService', () => {
       'prompt',
       run,
     );
-    await expect(result.response.text()).rejects.toThrow('stream blew up');
+    const text = await result.response.text();
+    expect(text).toContain('"error"');
+    expect(text).toContain('stream blew up');
+    expect(text).toContain('data: [DONE]');
     expect(liveRun.errorMessage).toBe('stream blew up');
   });
 

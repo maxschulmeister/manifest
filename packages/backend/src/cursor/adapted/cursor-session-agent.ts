@@ -4,8 +4,8 @@
  */
 import { createHash } from 'node:crypto';
 import type { AgentModeOption, ModelSelection, SDKAgent } from '@cursor/sdk';
-import { Agent } from '@cursor/sdk';
 import { getManifestCursorSettingSources } from '../cursor-setting-sources';
+import { loadCursorSdk } from '../cursor-sdk-http-transport';
 import type {
   ManifestBridgeToolRequest,
   ManifestToolBridgeRun,
@@ -33,7 +33,7 @@ interface SessionCursorAgentCreateParams {
   bridgeSurfaceSignature?: string;
   bridgeRun?: ManifestToolBridgeRun;
   onBridgeToolRequest?: (request: ManifestBridgeToolRequest) => void;
-  createAgent?: typeof Agent.create;
+  createAgent?: typeof import('@cursor/sdk').Agent.create;
 }
 
 interface SessionCursorAgentEntryBase {
@@ -204,7 +204,7 @@ async function createReadyEntry(
   params: SessionCursorAgentCreateParams,
 ): Promise<ReadyEntry> {
   const poolKey = buildSessionAgentPoolKey(scopeKey, params);
-  const createAgent = params.createAgent ?? Agent.create;
+  const createAgent = params.createAgent ?? loadCursorSdk().Agent.create;
   const settingSources = getManifestCursorSettingSources();
   const bridgeRun = params.bridgeRun;
   if (bridgeRun) {

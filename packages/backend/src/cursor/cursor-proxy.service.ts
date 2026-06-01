@@ -13,6 +13,7 @@ import { planCursorSessionSend } from './adapted/cursor-session-send-policy';
 import {
   MISSING_CURSOR_API_KEY_MESSAGE,
   cursorProviderErrorResponse,
+  cursorProviderErrorSsePayload,
   sanitizeCursorProviderError,
 } from './adapted/cursor-provider-errors';
 import { hasTrailingUserMessagesAfterToolResults } from './adapted/cursor-provider-live-run-drain';
@@ -686,15 +687,20 @@ export class CursorProxyService implements OnModuleDestroy {
           controller.enqueue(encoder.encode('data: [DONE]\n\n'));
           controller.close();
         } catch (error) {
-          if (error instanceof ManifestCursorLiveRunAbortError) {
+          const aborted =
+            error instanceof ManifestCursorLiveRunAbortError ||
+            opts.signal?.aborted ||
+            (error instanceof Error && error.message === 'Request aborted');
+          if (aborted) {
             markManifestLiveRunCancelled(liveRun);
-          } else {
-            markManifestLiveRunError(
-              liveRun,
-              error instanceof Error ? error.message : String(error),
-            );
+            controller.error(error);
+            return;
           }
-          controller.error(error);
+
+          const message = sanitizeCursorProviderError(error, opts.apiKey);
+          markManifestLiveRunError(liveRun, message);
+          controller.enqueue(encoder.encode(cursorProviderErrorSsePayload(message)));
+          controller.close();
         }
       },
     });

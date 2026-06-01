@@ -1,7 +1,7 @@
 import type { ModelListItem, ModelParameterDefinition } from '@cursor/sdk';
-import { Cursor } from '@cursor/sdk';
 import { DiscoveredModel } from '../model-discovery/model-fetcher';
 import { FALLBACK_MODEL_ITEMS } from './cursor-fallback-models.generated';
+import { loadCursorSdk } from './cursor-sdk-http-transport';
 import { registerCursorModelCatalog } from './cursor-model-metadata';
 
 const CURSOR_PROVIDER_ID = 'cursor';
@@ -132,7 +132,7 @@ export async function discoverCursorModels(apiKey: string): Promise<DiscoveredMo
   if (!trimmed) return [];
 
   try {
-    const items = await Cursor.models.list({ apiKey: trimmed });
+    const items = await loadCursorSdk().Cursor.models.list({ apiKey: trimmed });
     if (!items.length) return [];
     registerCursorModelCatalog(items);
     return expandModelListItems(items);

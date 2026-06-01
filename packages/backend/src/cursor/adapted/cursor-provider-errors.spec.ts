@@ -1,6 +1,7 @@
 import {
   MISSING_CURSOR_API_KEY_MESSAGE,
   cursorProviderErrorResponse,
+  cursorProviderErrorSsePayload,
   sanitizeCursorProviderError,
 } from './cursor-provider-errors';
 
@@ -17,8 +18,9 @@ describe('cursor-provider-errors', () => {
     );
   });
 
-  it('maps network timeouts', () => {
+  it('maps network timeouts and refused streams', () => {
     expect(sanitizeCursorProviderError(new Error('read ETIMEDOUT'))).toMatch(/timed out/i);
+    expect(sanitizeCursorProviderError(new Error('NGHTTP2_REFUSED_STREAM'))).toMatch(/timed out/i);
   });
 
   it('returns missing key message unchanged', () => {
@@ -31,9 +33,12 @@ describe('cursor-provider-errors', () => {
     expect(sanitizeCursorProviderError({ code: 1 })).toMatch(/request failed/i);
   });
 
-  it('maps generic empty errors', () => {
-    expect(sanitizeCursorProviderError(new Error(''))).toMatch(/request failed/i);
-    expect(sanitizeCursorProviderError('')).toMatch(/request failed/i);
+  it('maps generic SDK wrapper errors', () => {
+    for (const message of ['', 'failed', 'run failed', 'Cursor SDK run failed']) {
+      expect(sanitizeCursorProviderError(new Error(message))).toMatch(
+        /did not provide provider error details/i,
+      );
+    }
   });
 
   it('builds JSON error responses', async () => {
@@ -41,5 +46,12 @@ describe('cursor-provider-errors', () => {
     expect(res.status).toBe(503);
     const body = (await res.json()) as { error: { message: string } };
     expect(body.error.message).toBe('failed');
+  });
+
+  it('builds streaming error payloads', () => {
+    const payload = cursorProviderErrorSsePayload('failed');
+    expect(payload).toContain('"error"');
+    expect(payload).toContain('failed');
+    expect(payload).toContain('data: [DONE]');
   });
 });
