@@ -5,7 +5,7 @@ by fitchmultz, MIT License:
 
 - `cursor-session-agent.ts`
 - `cursor-session-send-policy.ts`
-- `cursor-provider-live-run-drain.ts` (helpers; full resume in `manifest-cursor-live-run.ts`)
+- `cursor-provider-live-run-drain.ts` (transcript helpers; live-run resume in `manifest-cursor-live-run.ts`)
 - `manifest-tool-bridge-*.ts`, `manifest-bridge-contract.ts`, `cursor-mcp-timeout-override.ts` (from pi-cursor-sdk bridge modules)
 - `cursor-provider-errors.ts`
 - `cursor-setting-sources.ts` (Manifest forces `settingSources: []`; no env override)

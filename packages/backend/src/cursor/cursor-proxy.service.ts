@@ -227,23 +227,66 @@ export class CursorProxyService implements OnModuleDestroy {
     const liveRun = getManifestCursorLiveRunForScope(scopeKey);
     if (!liveRun || liveRun.disposed || !liveRun.bridgeRun) return undefined;
 
+    if (hasTrailingUserMessagesAfterToolResults(messages)) {
+      await releaseManifestCursorLiveRun(liveRun);
+      return undefined;
+    }
+
     const toolResults = consumeOpenAiToolResultsForLiveRun(liveRun, messages);
     if (toolResults.length === 0) return undefined;
 
-    liveRun.bridgeRun.resolveToolResults(toolResults);
-
-    if (opts.stream) {
-      return this.streamLiveRunUntilDone(liveRun, opts, manifestModelId, '', liveRun.sdkRun);
+    if (liveRun.errorMessage || liveRun.cancelled) {
+      return this.finishResumeLiveRunWithError(liveRun, opts.apiKey);
     }
 
-    const result = await this.collectLiveRunUntilDone(liveRun, opts.signal);
-    return this.buildForwardResult(
-      manifestModelId,
-      result.text,
-      result.bridgeRequests,
-      opts.stream,
-      '',
-    );
+    liveRun.bridgeRun.resolveToolResults(toolResults);
+
+    try {
+      if (opts.stream) {
+        const outcome = await this.streamLiveRunUntilDone(
+          liveRun,
+          opts,
+          manifestModelId,
+          '',
+          liveRun.sdkRun,
+        );
+        if (liveRun.errorMessage || liveRun.cancelled) {
+          return this.finishResumeLiveRunWithError(liveRun, opts.apiKey);
+        }
+        return outcome;
+      }
+
+      const result = await this.collectLiveRunUntilDone(liveRun, opts.signal);
+      if (liveRun.errorMessage || liveRun.cancelled) {
+        return this.finishResumeLiveRunWithError(liveRun, opts.apiKey);
+      }
+      return this.buildForwardResult(
+        manifestModelId,
+        result.text,
+        result.bridgeRequests,
+        opts.stream,
+        '',
+      );
+    } catch (error) {
+      return this.finishResumeLiveRunWithError(liveRun, opts.apiKey, error);
+    }
+  }
+
+  private async finishResumeLiveRunWithError(
+    liveRun: ReturnType<typeof startManifestCursorLiveRun>,
+    apiKey?: string,
+    error?: unknown,
+  ): Promise<ForwardResult> {
+    const fallback =
+      liveRun.errorMessage ?? (liveRun.cancelled ? 'Run cancelled' : 'Cursor SDK run failed');
+    const message = sanitizeCursorProviderError(error ?? new Error(fallback), apiKey);
+    await releaseManifestCursorLiveRun(liveRun);
+    return {
+      response: cursorProviderErrorResponse(message),
+      isGoogle: false,
+      isAnthropic: false,
+      isChatGpt: false,
+    };
   }
 
   private async executeRun(
@@ -603,6 +646,10 @@ export class CursorProxyService implements OnModuleDestroy {
             return;
           }
 
+          if (liveRun.errorMessage || liveRun.cancelled) {
+            throw new Error(liveRun.errorMessage ?? 'Run cancelled');
+          }
+
           const text = liveRun.textDeltas.join('');
           const usage = estimateUsage(promptText, text);
           recordAssistantSnapshot();
@@ -745,6 +792,12 @@ export class CursorProxyService implements OnModuleDestroy {
   ): Promise<RunTextResult> {
     while (!isManifestLiveRunReady(liveRun)) {
       await waitForManifestLiveRunProgress(liveRun, signal);
+    }
+    if (liveRun.errorMessage) {
+      throw new Error(liveRun.errorMessage);
+    }
+    if (liveRun.cancelled) {
+      throw new Error(liveRun.errorMessage ?? 'Run cancelled');
     }
     const bridgeRequests = collectManifestBridgeToolBatch(liveRun);
     return { text: liveRun.textDeltas.join(''), bridgeRequests };

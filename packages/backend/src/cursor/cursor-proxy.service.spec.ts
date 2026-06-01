@@ -8,6 +8,9 @@ import { MAX_COMPLETED_INCREMENTAL_SENDS_BEFORE_REBOOTSTRAP } from './adapted/cu
 import { disposeManifestToolBridgeForTests } from './adapted/manifest-tool-bridge-server';
 import {
   ManifestCursorLiveRunAbortError,
+  getManifestCursorLiveRunForScope,
+  markManifestLiveRunCancelled,
+  markManifestLiveRunError,
   markManifestLiveRunFinished,
   queueManifestLiveEvent,
   releaseAllManifestCursorLiveRunsForTests,
@@ -352,6 +355,142 @@ describe('CursorProxyService', () => {
       choices: Array<{ message: { content: string } }>;
     };
     expect(json.choices[0].message.content).toBe('After tool execution');
+  });
+
+  it('returns error when resumed live run failed after tool results', async () => {
+    const scopeKey = buildCursorSessionPoolKey('agent-db-1', 'cursor-key', 'conv-resume-fail');
+    const bridgeRun = {
+      hasPendingManifestToolCallId: (id: string) => id === 'call-resume-fail-1',
+      hasPendingToolCalls: () => true,
+      resolveToolResults: jest.fn(),
+      cancel: jest.fn(),
+      dispose: jest.fn().mockResolvedValue(undefined),
+    } as unknown as ManifestToolBridgeRun;
+    const liveRun = startManifestCursorLiveRun({
+      id: 'live-resume-fail',
+      scopeKey,
+      agent: { agentId: 'agent-1' } as unknown as SDKAgent,
+      bridgeRun,
+    });
+    markManifestLiveRunError(liveRun, 'Cursor SDK run failed');
+
+    const service = new CursorProxyService();
+    const result = await service.forward({
+      provider: 'cursor',
+      apiKey: 'cursor-key',
+      model: 'cursor/composer-2.5',
+      body: {
+        messages: [
+          { role: 'user', content: 'run' },
+          { role: 'tool', tool_call_id: 'call-resume-fail-1', content: 'ok' },
+        ],
+        tools: [{ type: 'function', function: { name: 'bash', parameters: { type: 'object' } } }],
+      },
+      stream: false,
+      agentId: 'agent-db-1',
+      sessionKey: 'conv-resume-fail',
+    });
+
+    expect(mockAcquire).not.toHaveBeenCalled();
+    expect(result.response.ok).toBe(false);
+    const json = (await result.response.json()) as { error: { message: string } };
+    expect(json.error.message).toContain('Cursor SDK run failed');
+  });
+
+  it('returns error when resumed live run was cancelled after tool results', async () => {
+    const scopeKey = buildCursorSessionPoolKey('agent-db-1', 'cursor-key', 'conv-resume-cancel');
+    const bridgeRun = {
+      hasPendingManifestToolCallId: (id: string) => id === 'call-resume-cancel-1',
+      hasPendingToolCalls: () => true,
+      resolveToolResults: jest.fn(),
+      cancel: jest.fn(),
+      dispose: jest.fn().mockResolvedValue(undefined),
+    } as unknown as ManifestToolBridgeRun;
+    const liveRun = startManifestCursorLiveRun({
+      id: 'live-resume-cancel',
+      scopeKey,
+      agent: { agentId: 'agent-1' } as unknown as SDKAgent,
+      bridgeRun,
+    });
+    markManifestLiveRunCancelled(liveRun, 'Run cancelled');
+
+    const service = new CursorProxyService();
+    const result = await service.forward({
+      provider: 'cursor',
+      apiKey: 'cursor-key',
+      model: 'cursor/composer-2.5',
+      body: {
+        messages: [
+          { role: 'user', content: 'run' },
+          { role: 'tool', tool_call_id: 'call-resume-cancel-1', content: 'ok' },
+        ],
+        tools: [{ type: 'function', function: { name: 'bash', parameters: { type: 'object' } } }],
+      },
+      stream: false,
+      agentId: 'agent-db-1',
+      sessionKey: 'conv-resume-cancel',
+    });
+
+    expect(mockAcquire).not.toHaveBeenCalled();
+    expect(result.response.ok).toBe(false);
+    const json = (await result.response.json()) as { error: { message: string } };
+    expect(json.error.message).toContain('Run cancelled');
+  });
+
+  it('skips resume when tool results are followed by a new user turn', async () => {
+    const scopeKey = buildCursorSessionPoolKey('agent-db-1', 'cursor-key', 'conv-trailing-user');
+    const bridgeRun = {
+      hasPendingManifestToolCallId: (id: string) => id === 'call-trailing-1',
+      hasPendingToolCalls: () => true,
+      resolveToolResults: jest.fn(),
+      cancel: jest.fn(),
+      dispose: jest.fn().mockResolvedValue(undefined),
+    } as unknown as ManifestToolBridgeRun;
+    startManifestCursorLiveRun({
+      id: 'live-trailing-user',
+      scopeKey,
+      agent: { agentId: 'agent-1' } as unknown as SDKAgent,
+      bridgeRun,
+    });
+
+    const agent = {
+      agentId: 'agent-1',
+      model: { id: 'composer-2.5' },
+      send: jest.fn().mockReturnValue(mockRun('Fresh turn')),
+      close: jest.fn(),
+      reload: jest.fn().mockResolvedValue(undefined),
+      [Symbol.asyncDispose]: jest.fn().mockResolvedValue(undefined),
+      listArtifacts: jest.fn().mockResolvedValue([]),
+      downloadArtifact: jest.fn(),
+    } as unknown as SDKAgent;
+    mockAcquire.mockResolvedValue(mockLease(agent));
+
+    const service = new CursorProxyService();
+    const result = await service.forward({
+      provider: 'cursor',
+      apiKey: 'cursor-key',
+      model: 'cursor/composer-2.5',
+      body: {
+        messages: [
+          { role: 'user', content: 'run' },
+          { role: 'tool', tool_call_id: 'call-trailing-1', content: 'ok' },
+          { role: 'user', content: 'continue differently' },
+        ],
+        tools: [{ type: 'function', function: { name: 'bash', parameters: { type: 'object' } } }],
+      },
+      stream: false,
+      agentId: 'agent-db-1',
+      sessionKey: 'conv-trailing-user',
+    });
+
+    expect(mockAcquire).toHaveBeenCalled();
+    expect(bridgeRun.resolveToolResults).not.toHaveBeenCalled();
+    expect(getManifestCursorLiveRunForScope(scopeKey)).toBeUndefined();
+    expect(result.response.ok).toBe(true);
+    const json = (await result.response.json()) as {
+      choices: Array<{ message: { content: string } }>;
+    };
+    expect(json.choices[0].message.content).toBe('Fresh turn');
   });
 
   it('returns OpenAI chat completion for non-stream cursor requests', async () => {
