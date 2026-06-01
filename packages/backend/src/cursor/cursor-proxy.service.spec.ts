@@ -1,11 +1,6 @@
 import type { SDKAgent } from '@cursor/sdk';
-import {
-  acquireSessionCursorAgent,
-  disposeAllSessionCursorAgents,
-  resetSessionCursorAgent,
-} from './adapted/cursor-session-agent';
+import { acquireSessionCursorAgent, resetSessionCursorAgent } from './adapted/cursor-session-agent';
 import { MAX_COMPLETED_INCREMENTAL_SENDS_BEFORE_REBOOTSTRAP } from './adapted/cursor-session-send-policy';
-import { disposeManifestToolBridgeForTests } from './adapted/manifest-tool-bridge-server';
 import {
   ManifestCursorLiveRunAbortError,
   getManifestCursorLiveRunForScope,
@@ -13,9 +8,9 @@ import {
   markManifestLiveRunError,
   markManifestLiveRunFinished,
   queueManifestLiveEvent,
-  releaseAllManifestCursorLiveRunsForTests,
   startManifestCursorLiveRun,
 } from './adapted/manifest-cursor-live-run';
+import { disposeCursorTestState } from './cursor-test-harness';
 import * as manifestCursorLiveRun from './adapted/manifest-cursor-live-run';
 import type {
   ManifestBridgeToolRequest,
@@ -101,9 +96,7 @@ const bridgeToolRequest: ManifestBridgeToolRequest = {
 describe('CursorProxyService', () => {
   afterEach(async () => {
     jest.clearAllMocks();
-    await releaseAllManifestCursorLiveRunsForTests();
-    await disposeManifestToolBridgeForTests();
-    await disposeAllSessionCursorAgents();
+    await disposeCursorTestState();
   });
 
   it('uses incremental prompt on follow-up turns', async () => {

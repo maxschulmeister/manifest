@@ -1,24 +1,28 @@
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { MANIFEST_MCP_SERVER_NAME } from './manifest-tool-bridge-constants';
 import { ManifestToolBridgeRunImpl } from './manifest-tool-bridge-run';
-import type { ManifestBridgeToolRequest } from './manifest-tool-bridge-types';
-import {
-  __manifestBridgeTestUtils,
-  disposeManifestToolBridgeForTests,
-} from './manifest-tool-bridge-server';
+import type {
+  ManifestBridgeToolRequest,
+  ManifestToolBridgeRun,
+} from './manifest-tool-bridge-types';
+import { __manifestBridgeTestUtils } from './manifest-tool-bridge-server';
 import { buildManifestToolBridgeSnapshotFromOpenAiTools } from './manifest-tool-bridge-snapshot';
+import { disposeCursorTestState, withMcpTestClient } from '../cursor-test-harness';
 
-async function connectClient(url: string) {
-  const client = new Client({ name: 'manifest-run-test', version: '1.0.0' });
-  const transport = new StreamableHTTPClientTransport(new URL(url));
-  await client.connect(transport);
-  return { client, transport };
+function mcpUrl(run: ManifestToolBridgeRun): string {
+  return (run.mcpServers?.manifest_tools as { url: string }).url;
+}
+
+async function withRunMcpClient<T>(
+  run: ManifestToolBridgeRun,
+  fn: (client: Client) => Promise<T>,
+): Promise<T> {
+  return withMcpTestClient(mcpUrl(run), fn);
 }
 
 describe('manifest-tool-bridge-run', () => {
   afterEach(async () => {
-    await disposeManifestToolBridgeForTests();
+    await disposeCursorTestState();
   });
 
   it('skips MCP server when disabled with empty snapshot', async () => {
@@ -60,13 +64,12 @@ describe('manifest-tool-bridge-run', () => {
       { type: 'function', function: { name: 'bash' } },
     ]);
     const run = await registry.createRun({ snapshot });
-    const url = (run.mcpServers?.manifest_tools as { url: string }).url;
     run.setOnToolRequest(undefined);
-    const { client, transport } = await connectClient(url);
-    await expect(client.callTool({ name: 'manifest__bash', arguments: {} })).rejects.toThrow(
-      /no active live run/i,
-    );
-    await Promise.allSettled([transport.close(), client.close()]);
+    await withRunMcpClient(run, async (client) => {
+      await expect(client.callTool({ name: 'manifest__bash', arguments: {} })).rejects.toThrow(
+        /no active live run/i,
+      );
+    });
     await run.dispose();
   });
 
@@ -78,17 +81,17 @@ describe('manifest-tool-bridge-run', () => {
     const seen: string[] = [];
     let capturedToolCallId = '';
     const run = await registry.createRun({ snapshot });
-    const url = (run.mcpServers?.manifest_tools as { url: string }).url;
-    const { client } = await connectClient(url);
-    const callPromise = client.callTool({ name: 'manifest__bash', arguments: {} });
-    await new Promise((r) => setTimeout(r, 25));
-    run.setOnToolRequest((req) => {
-      seen.push(req.agentToolName);
-      capturedToolCallId = req.manifestToolCallId;
+    await withRunMcpClient(run, async (client) => {
+      const callPromise = client.callTool({ name: 'manifest__bash', arguments: {} });
+      await new Promise((r) => setTimeout(r, 25));
+      run.setOnToolRequest((req) => {
+        seen.push(req.agentToolName);
+        capturedToolCallId = req.manifestToolCallId;
+      });
+      expect(seen).toEqual(['bash']);
+      run.resolveToolResults([{ toolCallId: capturedToolCallId, content: 'ok' }]);
+      await callPromise;
     });
-    expect(seen).toEqual(['bash']);
-    run.resolveToolResults([{ toolCallId: capturedToolCallId, content: 'ok' }]);
-    await callPromise;
     await run.dispose();
     expect(capturedToolCallId).toMatch(/-tool-/);
   });
@@ -106,12 +109,11 @@ describe('manifest-tool-bridge-run', () => {
     });
     expect(run.isBridgeMcpToolCall({ name: 'manifest__bash' })).toBe(true);
     expect(run.isBridgeMcpToolCall({ name: 'read' })).toBe(false);
-    const url = (run.mcpServers?.manifest_tools as { url: string }).url;
-    const { client, transport } = await connectClient(url);
-    await expect(client.callTool({ name: 'manifest__bash', arguments: {} })).rejects.toThrow(
-      'handler failed',
-    );
-    await Promise.allSettled([transport.close(), client.close()]);
+    await withRunMcpClient(run, async (client) => {
+      await expect(client.callTool({ name: 'manifest__bash', arguments: {} })).rejects.toThrow(
+        'handler failed',
+      );
+    });
     await run.dispose();
   });
 
@@ -121,16 +123,15 @@ describe('manifest-tool-bridge-run', () => {
       { type: 'function', function: { name: 'bash' } },
     ]);
     const run = await registry.createRun({ snapshot });
-    const url = (run.mcpServers?.manifest_tools as { url: string }).url;
-    const { client, transport } = await connectClient(url);
-    const controller = new AbortController();
-    const callPromise = client.callTool({ name: 'manifest__bash', arguments: {} }, undefined, {
-      signal: controller.signal,
+    await withRunMcpClient(run, async (client) => {
+      const controller = new AbortController();
+      const callPromise = client.callTool({ name: 'manifest__bash', arguments: {} }, undefined, {
+        signal: controller.signal,
+      });
+      await new Promise((r) => setTimeout(r, 20));
+      controller.abort();
+      await expect(callPromise).rejects.toThrow();
     });
-    await new Promise((r) => setTimeout(r, 20));
-    controller.abort();
-    await expect(callPromise).rejects.toThrow();
-    await Promise.allSettled([transport.close(), client.close()]);
     await run.dispose();
   });
 
@@ -158,22 +159,23 @@ describe('manifest-tool-bridge-run', () => {
       snapshot,
       onToolRequest: (req) => requests.push(req),
     });
-    const url = (run.mcpServers?.manifest_tools as { url: string }).url;
-    const { client, transport } = await connectClient(url);
-    void client.callTool({ name: 'manifest__bash', arguments: {} });
-    await new Promise((r) => setTimeout(r, 25));
-    const callId = requests[0]?.cursorMcpCallId;
-    expect(callId).toBeDefined();
-    expect(
-      run.isBridgeMcpToolCall({
-        name: 'mcp',
-        call_id: callId,
-      }),
-    ).toBe(true);
-    const toolCallId = requests[0]?.manifestToolCallId;
-    if (toolCallId) {
-      run.resolveToolResults([{ toolCallId, content: 'done' }]);
-    }
+    await withRunMcpClient(run, async (client) => {
+      const callPromise = client.callTool({ name: 'manifest__bash', arguments: {} });
+      await new Promise((r) => setTimeout(r, 25));
+      const callId = requests[0]?.cursorMcpCallId;
+      expect(callId).toBeDefined();
+      expect(
+        run.isBridgeMcpToolCall({
+          name: 'mcp',
+          call_id: callId,
+        }),
+      ).toBe(true);
+      const toolCallId = requests[0]?.manifestToolCallId;
+      if (toolCallId) {
+        run.resolveToolResults([{ toolCallId, content: 'done' }]);
+      }
+      await callPromise;
+    });
     await run.dispose();
   });
 
@@ -196,15 +198,15 @@ describe('manifest-tool-bridge-run', () => {
       { type: 'function', function: { name: 'bash' } },
     ]);
     const run = await registry.createRun({ snapshot });
-    const url = (run.mcpServers?.manifest_tools as { url: string }).url;
-    const { client } = await connectClient(url);
-    const callPromise = client.callTool({ name: 'manifest__bash', arguments: {} });
-    await new Promise((r) => setTimeout(r, 25));
-    const queued = run.takeQueuedToolRequests();
-    expect(queued).toHaveLength(1);
-    run.resolveToolResults([{ toolCallId: queued[0]!.manifestToolCallId, content: 'ok' }]);
-    await callPromise;
-    expect(run.takeQueuedToolRequests()).toEqual([]);
+    await withRunMcpClient(run, async (client) => {
+      const callPromise = client.callTool({ name: 'manifest__bash', arguments: {} });
+      await new Promise((r) => setTimeout(r, 25));
+      const queued = run.takeQueuedToolRequests();
+      expect(queued).toHaveLength(1);
+      run.resolveToolResults([{ toolCallId: queued[0]!.manifestToolCallId, content: 'ok' }]);
+      await callPromise;
+      expect(run.takeQueuedToolRequests()).toEqual([]);
+    });
     await run.dispose();
   });
 
@@ -218,15 +220,15 @@ describe('manifest-tool-bridge-run', () => {
       snapshot,
       onToolRequest: (request) => requests.push(request),
     });
-    const url = (run.mcpServers?.manifest_tools as { url: string }).url;
-    const { client } = await connectClient(url);
-    const callPromise = client.callTool({ name: 'manifest__bash', arguments: {} });
-    await new Promise((r) => setTimeout(r, 25));
-    run.resolveToolResults([
-      { toolCallId: requests[0]!.manifestToolCallId, content: 'failed', isError: true },
-    ]);
-    const result = await callPromise;
-    expect(result.isError).toBe(true);
+    await withRunMcpClient(run, async (client) => {
+      const callPromise = client.callTool({ name: 'manifest__bash', arguments: {} });
+      await new Promise((r) => setTimeout(r, 25));
+      run.resolveToolResults([
+        { toolCallId: requests[0]!.manifestToolCallId, content: 'failed', isError: true },
+      ]);
+      const result = await callPromise;
+      expect(result.isError).toBe(true);
+    });
     await run.dispose();
   });
 
@@ -236,15 +238,15 @@ describe('manifest-tool-bridge-run', () => {
       { type: 'function', function: { name: 'bash' } },
     ]);
     const run = await registry.createRun({ snapshot });
-    const url = (run.mcpServers?.manifest_tools as { url: string }).url;
-    const { client } = await connectClient(url);
-    const controller = new AbortController();
-    controller.abort();
-    await expect(
-      client.callTool({ name: 'manifest__bash', arguments: {} }, undefined, {
-        signal: controller.signal,
-      }),
-    ).rejects.toThrow();
+    await withRunMcpClient(run, async (client) => {
+      const controller = new AbortController();
+      controller.abort();
+      await expect(
+        client.callTool({ name: 'manifest__bash', arguments: {} }, undefined, {
+          signal: controller.signal,
+        }),
+      ).rejects.toThrow();
+    });
     await run.dispose();
   });
 
@@ -254,12 +256,12 @@ describe('manifest-tool-bridge-run', () => {
       { type: 'function', function: { name: 'bash' } },
     ]);
     const run = await registry.createRun({ snapshot });
-    const url = (run.mcpServers?.manifest_tools as { url: string }).url;
-    const { client } = await connectClient(url);
-    const callPromise = client.callTool({ name: 'manifest__bash', arguments: {} });
-    await new Promise((r) => setTimeout(r, 25));
-    run.setOnToolRequest(undefined);
-    await expect(callPromise).rejects.toThrow(/no active live run/i);
+    await withRunMcpClient(run, async (client) => {
+      const callPromise = client.callTool({ name: 'manifest__bash', arguments: {} });
+      await new Promise((r) => setTimeout(r, 25));
+      run.setOnToolRequest(undefined);
+      await expect(callPromise).rejects.toThrow(/no active live run/i);
+    });
     await run.dispose();
   });
 
@@ -270,11 +272,11 @@ describe('manifest-tool-bridge-run', () => {
     ]);
     const run = await registry.createRun({ snapshot });
     run.setOnToolRequest(undefined);
-    const url = (run.mcpServers?.manifest_tools as { url: string }).url;
-    const { client } = await connectClient(url);
-    await expect(client.callTool({ name: 'manifest__bash', arguments: {} })).rejects.toThrow(
-      /no active live run/i,
-    );
+    await withRunMcpClient(run, async (client) => {
+      await expect(client.callTool({ name: 'manifest__bash', arguments: {} })).rejects.toThrow(
+        /no active live run/i,
+      );
+    });
     await run.dispose();
   });
 
@@ -289,15 +291,15 @@ describe('manifest-tool-bridge-run', () => {
         /* block until abort */
       },
     });
-    const url = (run.mcpServers?.manifest_tools as { url: string }).url;
-    const { client } = await connectClient(url);
-    const controller = new AbortController();
-    const callPromise = client.callTool({ name: 'manifest__bash', arguments: {} }, undefined, {
-      signal: controller.signal,
+    await withRunMcpClient(run, async (client) => {
+      const controller = new AbortController();
+      const callPromise = client.callTool({ name: 'manifest__bash', arguments: {} }, undefined, {
+        signal: controller.signal,
+      });
+      await new Promise((r) => setTimeout(r, 25));
+      controller.abort();
+      await expect(callPromise).rejects.toThrow(/aborted/i);
     });
-    await new Promise((r) => setTimeout(r, 25));
-    controller.abort();
-    await expect(callPromise).rejects.toThrow(/aborted/i);
     await run.dispose();
   });
 
@@ -312,11 +314,11 @@ describe('manifest-tool-bridge-run', () => {
         throw new Error('handler failed');
       },
     });
-    const url = (run.mcpServers?.manifest_tools as { url: string }).url;
-    const { client } = await connectClient(url);
-    await expect(client.callTool({ name: 'manifest__bash', arguments: {} })).rejects.toThrow(
-      /handler failed/i,
-    );
+    await withRunMcpClient(run, async (client) => {
+      await expect(client.callTool({ name: 'manifest__bash', arguments: {} })).rejects.toThrow(
+        /handler failed/i,
+      );
+    });
     await run.dispose();
   });
 
@@ -327,16 +329,15 @@ describe('manifest-tool-bridge-run', () => {
     ]);
     const run = await registry.createRun({ snapshot });
     expect(run.hasPendingToolCalls()).toBe(false);
-    const url = (run.mcpServers?.manifest_tools as { url: string }).url;
-    const { client, transport } = await connectClient(url);
-    const callPromise = client.callTool({ name: 'manifest__bash', arguments: {} });
-    await new Promise((r) => setTimeout(r, 25));
-    expect(run.hasPendingToolCalls()).toBe(true);
-    const queued = run.takeQueuedToolRequests();
-    run.resolveToolResults([{ toolCallId: queued[0]!.manifestToolCallId, content: 'ok' }]);
-    await callPromise;
-    expect(run.hasPendingToolCalls()).toBe(false);
-    await Promise.allSettled([transport.close(), client.close()]);
+    await withRunMcpClient(run, async (client) => {
+      const callPromise = client.callTool({ name: 'manifest__bash', arguments: {} });
+      await new Promise((r) => setTimeout(r, 25));
+      expect(run.hasPendingToolCalls()).toBe(true);
+      const queued = run.takeQueuedToolRequests();
+      run.resolveToolResults([{ toolCallId: queued[0]!.manifestToolCallId, content: 'ok' }]);
+      await callPromise;
+      expect(run.hasPendingToolCalls()).toBe(false);
+    });
     await run.dispose();
   });
 
@@ -346,16 +347,16 @@ describe('manifest-tool-bridge-run', () => {
       { type: 'function', function: { name: 'bash' } },
     ]);
     const run = (await registry.createRun({ snapshot })) as ManifestToolBridgeRunImpl;
-    const url = (run.mcpServers?.manifest_tools as { url: string }).url;
-    const { client } = await connectClient(url);
-    const callPromise = client.callTool({ name: 'manifest__bash', arguments: {} });
-    await new Promise((r) => setTimeout(r, 25));
-    const queued = (run as unknown as { queuedRequests: ManifestBridgeToolRequest[] })
-      .queuedRequests;
-    expect(queued).toHaveLength(1);
-    run.resolveToolResults([{ toolCallId: queued[0]!.manifestToolCallId, content: 'ok' }]);
-    await callPromise;
-    expect(queued).toHaveLength(0);
+    await withRunMcpClient(run, async (client) => {
+      const callPromise = client.callTool({ name: 'manifest__bash', arguments: {} });
+      await new Promise((r) => setTimeout(r, 25));
+      const queued = (run as unknown as { queuedRequests: ManifestBridgeToolRequest[] })
+        .queuedRequests;
+      expect(queued).toHaveLength(1);
+      run.resolveToolResults([{ toolCallId: queued[0]!.manifestToolCallId, content: 'ok' }]);
+      await callPromise;
+      expect(queued).toHaveLength(0);
+    });
     await run.dispose();
   });
 
@@ -365,14 +366,14 @@ describe('manifest-tool-bridge-run', () => {
       { type: 'function', function: { name: 'bash' } },
     ]);
     const run = await registry.createRun({ snapshot });
-    const url = (run.mcpServers?.manifest_tools as { url: string }).url;
-    const { client } = await connectClient(url);
-    const callPromise = client.callTool({ name: 'manifest__bash', arguments: {} });
-    await new Promise((r) => setTimeout(r, 25));
-    expect(run.hasPendingToolCalls()).toBe(true);
-    run.cancel('queued cancel');
-    await expect(callPromise).rejects.toThrow(/queued cancel/i);
-    expect(run.takeQueuedToolRequests()).toEqual([]);
+    await withRunMcpClient(run, async (client) => {
+      const callPromise = client.callTool({ name: 'manifest__bash', arguments: {} });
+      await new Promise((r) => setTimeout(r, 25));
+      expect(run.hasPendingToolCalls()).toBe(true);
+      run.cancel('queued cancel');
+      await expect(callPromise).rejects.toThrow(/queued cancel/i);
+      expect(run.takeQueuedToolRequests()).toEqual([]);
+    });
     await run.dispose();
   });
 
@@ -409,20 +410,21 @@ describe('manifest-tool-bridge-run', () => {
       snapshot,
       onToolRequest: (request) => requests.push(request),
     });
-    const url = (run.mcpServers?.manifest_tools as { url: string }).url;
-    const { client } = await connectClient(url);
-    void client.callTool({ name: 'manifest__bash', arguments: {} });
-    await new Promise((r) => setTimeout(r, 25));
-    const callId = requests[0]?.cursorMcpCallId;
-    expect(
-      run.isBridgeMcpToolCall({
-        name: MANIFEST_MCP_SERVER_NAME,
-        call_id: callId,
-      }),
-    ).toBe(true);
-    if (callId) {
-      run.resolveToolResults([{ toolCallId: requests[0]!.manifestToolCallId, content: 'ok' }]);
-    }
+    await withRunMcpClient(run, async (client) => {
+      const callPromise = client.callTool({ name: 'manifest__bash', arguments: {} });
+      await new Promise((r) => setTimeout(r, 25));
+      const callId = requests[0]?.cursorMcpCallId;
+      expect(
+        run.isBridgeMcpToolCall({
+          name: MANIFEST_MCP_SERVER_NAME,
+          call_id: callId,
+        }),
+      ).toBe(true);
+      if (callId) {
+        run.resolveToolResults([{ toolCallId: requests[0]!.manifestToolCallId, content: 'ok' }]);
+      }
+      await callPromise;
+    });
     await run.dispose();
   });
 });

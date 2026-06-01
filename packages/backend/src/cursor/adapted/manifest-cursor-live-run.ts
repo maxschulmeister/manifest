@@ -184,6 +184,7 @@ export async function waitForBridgeToolOrLiveRunDone(
 ): Promise<void> {
   while (true) {
     if (signal?.aborted) throw new ManifestCursorLiveRunAbortError();
+    if (run.disposed) return;
     if (run.pendingEvents.some((event) => event.type === 'bridge-tool')) return;
     if (run.done || run.cancelled || run.errorMessage) return;
     await new Promise<void>((resolve, reject) => {
@@ -191,6 +192,7 @@ export async function waitForBridgeToolOrLiveRunDone(
         signal?.removeEventListener('abort', onAbort);
         resolve();
       }, MANIFEST_BRIDGE_COLLECT_POLL_MS);
+      timer.unref?.();
       const onAbort = () => {
         clearTimeout(timer);
         reject(new ManifestCursorLiveRunAbortError());

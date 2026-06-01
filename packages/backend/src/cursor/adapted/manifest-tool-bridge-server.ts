@@ -36,6 +36,13 @@ export class ManifestToolBridgeRegistry implements ManifestToolBridge {
     );
   }
 
+  /** Test helper: dispose runs and close the loopback HTTP server even if routes remain. */
+  async disposeForTests(): Promise<void> {
+    await this.disposeAll('Manifest tool bridge test reset');
+    this.routes.clear();
+    await this.closeHttpServer();
+  }
+
   async registerRun(pathname: string, run: ManifestToolBridgeRunImpl): Promise<string> {
     await this.ensureHttpServer();
     this.routes.set(pathname, run);
@@ -166,16 +173,29 @@ export class ManifestToolBridgeRegistry implements ManifestToolBridge {
 }
 
 let registeredBridge: ManifestToolBridgeRegistry | undefined;
+const testRegistries = new Set<ManifestToolBridgeRegistry>();
 
 export function getManifestToolBridgeRegistry(): ManifestToolBridgeRegistry {
   if (!registeredBridge) registeredBridge = new ManifestToolBridgeRegistry();
   return registeredBridge;
 }
 
+export function createManifestToolBridgeRegistryForTests(): ManifestToolBridgeRegistry {
+  const registry = new ManifestToolBridgeRegistry();
+  testRegistries.add(registry);
+  return registry;
+}
+
+export async function disposeAllTestManifestToolBridgeRegistriesForTests(): Promise<void> {
+  const registries = [...testRegistries];
+  testRegistries.clear();
+  await Promise.all(registries.map((registry) => registry.disposeForTests()));
+}
+
 export async function disposeManifestToolBridgeForTests(): Promise<void> {
   const bridge = registeredBridge;
   registeredBridge = undefined;
-  await bridge?.disposeAll('Manifest tool bridge test reset');
+  await bridge?.disposeForTests();
 }
 
 export async function handleManifestBridgeHttpRequestForTests(
@@ -195,6 +215,6 @@ export const __manifestBridgeTestUtils = {
   getRegisteredBridgeForTests: () => registeredBridge,
   getFirstRunMcpUrlForTests: () => registeredBridge?.getFirstRunMcpUrlForTests(),
   getFirstBridgeRunForTests: () => registeredBridge?.getFirstBridgeRunForTests(),
-  createRegistry: () => new ManifestToolBridgeRegistry(),
+  createRegistry: () => createManifestToolBridgeRegistryForTests(),
   handleManifestBridgeHttpRequestForTests,
 };

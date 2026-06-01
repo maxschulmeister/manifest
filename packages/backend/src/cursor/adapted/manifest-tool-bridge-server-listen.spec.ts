@@ -16,15 +16,13 @@ jest.mock('node:http', () => {
   };
 });
 
-import {
-  disposeManifestToolBridgeForTests,
-  __manifestBridgeTestUtils,
-} from './manifest-tool-bridge-server';
+import { __manifestBridgeTestUtils } from './manifest-tool-bridge-server';
+import { disposeCursorTestState } from '../cursor-test-harness';
 import { buildManifestToolBridgeSnapshotFromOpenAiTools } from './manifest-tool-bridge-snapshot';
 
 describe('manifest-tool-bridge-server listen failures', () => {
   afterEach(async () => {
-    await disposeManifestToolBridgeForTests();
+    await disposeCursorTestState();
   });
 
   it('rejects when the HTTP server fails to listen', async () => {

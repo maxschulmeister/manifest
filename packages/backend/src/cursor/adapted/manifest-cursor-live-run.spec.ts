@@ -12,17 +12,17 @@ import {
   markManifestLiveRunFinished,
   peekManifestLiveEvent,
   queueManifestLiveEvent,
-  releaseAllManifestCursorLiveRunsForTests,
   releaseManifestCursorLiveRun,
   shiftManifestLiveEvent,
   startManifestCursorLiveRun,
   waitForBridgeToolOrLiveRunDone,
   waitForManifestLiveRunProgress,
 } from './manifest-cursor-live-run';
+import { disposeCursorTestState } from '../cursor-test-harness';
 
 describe('manifest-cursor-live-run', () => {
   afterEach(async () => {
-    await releaseAllManifestCursorLiveRunsForTests();
+    await disposeCursorTestState();
   });
 
   it('queues and collects bridge tool batches', () => {
@@ -155,6 +155,17 @@ describe('manifest-cursor-live-run', () => {
     });
     markManifestLiveRunError(run3, 'boom');
     expect(run3.errorMessage).toBe('boom');
+  });
+
+  it('stops bridge poll wait when the live run is disposed', async () => {
+    const run = startManifestCursorLiveRun({
+      id: 'live-bridge-disposed',
+      scopeKey: 'scope-bridge-disposed',
+      agent: { agentId: 'a' } as never,
+    });
+    const poll = waitForBridgeToolOrLiveRunDone(run);
+    await releaseManifestCursorLiveRun(run);
+    await expect(poll).resolves.toBeUndefined();
   });
 
   it('aborts bridge poll wait when signal is already aborted during setup', async () => {

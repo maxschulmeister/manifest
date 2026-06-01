@@ -8,7 +8,7 @@
     "start:dev": "NODE_OPTIONS='-r dotenv/config' nest start --watch",
     "start:prod": "node dist/main",
     "test": "jest",
-    "test:cursor-live": "jest --testPathPattern=cursor-proxy.live",
+    "test:cursor-live": "RUN_CURSOR_LIVE_TESTS=1 jest --testPathPattern=cursor-proxy.live --testTimeout=90000",
     "test:watch": "jest --watch",
     "test:e2e": "jest --config ./test/jest-e2e.json --runInBand",
     "lint": "eslint src/",
@@ -91,6 +91,9 @@
       "!**/otlp/proto/**"
     ],
     "coverageDirectory": "../coverage",
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "testPathIgnorePatterns": [
+      "/\\.live\\.spec\\.ts$/"
+    ]
   }
 }

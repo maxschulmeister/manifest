@@ -2,15 +2,15 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import {
   MANIFEST_BRIDGE_LOOPBACK_HOST,
   __manifestBridgeTestUtils,
-  disposeManifestToolBridgeForTests,
   getManifestToolBridgeRegistry,
 } from './manifest-tool-bridge-server';
 import { buildManifestToolBridgeSnapshotFromOpenAiTools } from './manifest-tool-bridge-snapshot';
 import { ManifestToolBridgeRunImpl } from './manifest-tool-bridge-run';
+import { disposeCursorTestState, withMcpTestClient } from '../cursor-test-harness';
 
 describe('manifest-tool-bridge-server', () => {
   afterEach(async () => {
-    await disposeManifestToolBridgeForTests();
+    await disposeCursorTestState();
   });
 
   it('closes HTTP server when last run unregisters', async () => {
@@ -53,7 +53,7 @@ describe('manifest-tool-bridge-server', () => {
       body: '{}',
     });
     expect(response.status).toBe(404);
-    await disposeManifestToolBridgeForTests();
+    await registry.disposeForTests();
   });
 
   it('returns 500 when run handler throws', async () => {
@@ -96,19 +96,14 @@ describe('manifest-tool-bridge-server', () => {
     ]);
     const run = await registry.createRun({ snapshot });
     const url = (run.mcpServers?.manifest_tools as { url: string }).url;
-    const { Client } = await import('@modelcontextprotocol/sdk/client/index.js');
-    const { StreamableHTTPClientTransport } =
-      await import('@modelcontextprotocol/sdk/client/streamableHttp.js');
-    const client = new Client({ name: 'pending-id-test', version: '1.0.0' });
-    const transport = new StreamableHTTPClientTransport(new URL(url));
-    await client.connect(transport);
-    const callPromise = client.callTool({ name: 'manifest__bash', arguments: {} });
-    await new Promise((r) => setTimeout(r, 25));
-    const queued = run.takeQueuedToolRequests();
-    expect(registry.hasPendingManifestToolCallId(queued[0]!.manifestToolCallId)).toBe(true);
-    run.resolveToolResults([{ toolCallId: queued[0]!.manifestToolCallId, content: 'ok' }]);
-    await callPromise;
-    await Promise.allSettled([transport.close(), client.close()]);
+    await withMcpTestClient(url, async (client) => {
+      const callPromise = client.callTool({ name: 'manifest__bash', arguments: {} });
+      await new Promise((r) => setTimeout(r, 25));
+      const queued = run.takeQueuedToolRequests();
+      expect(registry.hasPendingManifestToolCallId(queued[0]!.manifestToolCallId)).toBe(true);
+      run.resolveToolResults([{ toolCallId: queued[0]!.manifestToolCallId, content: 'ok' }]);
+      await callPromise;
+    });
     await run.dispose();
   });
 
@@ -147,7 +142,7 @@ describe('manifest-tool-bridge-server', () => {
     await singleton.createRun({ snapshot });
     expect(__manifestBridgeTestUtils.getFirstRunMcpUrlForTests()).toBeDefined();
     expect(__manifestBridgeTestUtils.getFirstBridgeRunForTests()).toBeDefined();
-    await disposeManifestToolBridgeForTests();
+    await disposeCursorTestState();
     expect(__manifestBridgeTestUtils.getFirstRunMcpUrlForTests()).toBeUndefined();
     expect(__manifestBridgeTestUtils.getFirstBridgeRunForTests()).toBeUndefined();
   });

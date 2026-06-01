@@ -1,7 +1,7 @@
 /**
- * Live Cursor SDK integration tests. Requires CURSOR_API_KEY in packages/backend/.env.
+ * Live Cursor SDK integration tests. Opt in with RUN_CURSOR_LIVE_TESTS=1 and CURSOR_API_KEY.
  * Run from packages/backend:
- *   npx jest src/cursor/cursor-proxy.live.spec.ts --testTimeout=90000 --forceExit
+ *   RUN_CURSOR_LIVE_TESTS=1 npx jest src/cursor/cursor-proxy.live.spec.ts --testTimeout=90000
  *
  * Bridge probe test must not await MCP callTool (deadlocks until tool results arrive).
  */
@@ -12,32 +12,35 @@ import { join, resolve } from 'node:path';
 import { config as loadEnv } from 'dotenv';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import { disposeAllSessionCursorAgents } from './adapted/cursor-session-agent';
-import {
-  __manifestBridgeTestUtils,
-  disposeManifestToolBridgeForTests,
-} from './adapted/manifest-tool-bridge-server';
+import { __manifestBridgeTestUtils } from './adapted/manifest-tool-bridge-server';
 import {
   manifestCursorLiveRuns,
   markManifestLiveRunFinished,
-  releaseAllManifestCursorLiveRunsForTests,
 } from './adapted/manifest-cursor-live-run';
 import { buildCursorSessionPoolKey } from './cursor-session-pool';
 import { CursorProxyService } from './cursor-proxy.service';
+import { disposeCursorTestState, isCursorLiveTestsEnabled } from './cursor-test-harness';
 
 const liveEnvPath = resolve(__dirname, '../../.env');
 if (existsSync(liveEnvPath)) {
   loadEnv({ path: liveEnvPath, override: true, quiet: true });
 }
 
+const liveTestsEnabled = isCursorLiveTestsEnabled();
 const apiKey = process.env.CURSOR_API_KEY?.trim();
-if (!apiKey) {
-  console.warn(
-    `Skipping live Cursor tests: CURSOR_API_KEY missing. Set it in ${liveEnvPath} ` +
+if (liveTestsEnabled && !apiKey) {
+  throw new Error(
+    `RUN_CURSOR_LIVE_TESTS is set but CURSOR_API_KEY is missing. Set it in ${liveEnvPath} ` +
       '(dotenv override: true; empty shell values are replaced).',
   );
 }
-const describeLive = apiKey ? describe : describe.skip;
+if (!liveTestsEnabled) {
+  console.warn(
+    'Skipping live Cursor tests: set RUN_CURSOR_LIVE_TESTS=1 to opt in. ' +
+      'CURSOR_API_KEY alone does not enable live SDK calls.',
+  );
+}
+const describeLive = liveTestsEnabled && apiKey ? describe : describe.skip;
 
 const LIVE_MODEL = process.env.CURSOR_LIVE_MODEL?.trim() || 'cursor/composer-2.5';
 const LIVE_TIMEOUT_MS = 90_000;
@@ -145,10 +148,7 @@ async function waitForBridgeMcpUrl(deadlineMs: number): Promise<string> {
 }
 
 async function disposeLiveCursorTestState(): Promise<void> {
-  await releaseAllManifestCursorLiveRunsForTests();
-  await disposeManifestToolBridgeForTests();
-  await disposeAllSessionCursorAgents();
-  await new Promise((r) => setTimeout(r, 500));
+  await disposeCursorTestState();
 }
 
 describeLive('CursorProxyService (live Cursor SDK)', () => {

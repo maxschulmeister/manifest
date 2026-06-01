@@ -5,6 +5,7 @@ import {
   disposeAllSessionCursorAgents,
   resetSessionCursorAgent,
 } from './cursor-session-agent';
+import { disposeCursorTestState } from '../cursor-test-harness';
 
 function mockAgent(id = 'agent-1'): SDKAgent {
   return {
@@ -21,7 +22,7 @@ function mockAgent(id = 'agent-1'): SDKAgent {
 
 describe('cursor-session-agent', () => {
   afterEach(async () => {
-    await disposeAllSessionCursorAgents();
+    await disposeCursorTestState();
   });
 
   it('reuses the same agent for identical pool keys', async () => {
