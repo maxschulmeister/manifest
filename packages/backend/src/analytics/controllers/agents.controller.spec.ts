@@ -12,6 +12,7 @@ import { ApiKeyGeneratorService } from '../../otlp/services/api-key.service';
 import { TenantCacheService } from '../../common/services/tenant-cache.service';
 import { IngestEventBusService } from '../../common/services/ingest-event-bus.service';
 import { AgentRecordingCacheService } from '../../common/services/agent-recording-cache.service';
+import { AgentCompressionCacheService } from '../../common/services/agent-compression-cache.service';
 
 describe('AgentsController', () => {
   let controller: AgentsController;
@@ -95,6 +96,10 @@ describe('AgentsController', () => {
         {
           provide: AgentRecordingCacheService,
           useValue: { isRecording: jest.fn(), invalidate: jest.fn() },
+        },
+        {
+          provide: AgentCompressionCacheService,
+          useValue: { isResponseCompressionEnabled: jest.fn(), invalidate: jest.fn() },
         },
         {
           provide: ApiKeyGeneratorService,
@@ -291,6 +296,10 @@ describe('AgentsController', () => {
           provide: AgentRecordingCacheService,
           useValue: { isRecording: jest.fn(), invalidate: jest.fn() },
         },
+        {
+          provide: AgentCompressionCacheService,
+          useValue: { isResponseCompressionEnabled: jest.fn(), invalidate: jest.fn() },
+        },
       ],
     }).compile();
 
@@ -353,6 +362,10 @@ describe('AgentsController', () => {
           provide: AgentRecordingCacheService,
           useValue: { isRecording: jest.fn(), invalidate: jest.fn() },
         },
+        {
+          provide: AgentCompressionCacheService,
+          useValue: { isResponseCompressionEnabled: jest.fn(), invalidate: jest.fn() },
+        },
       ],
     }).compile();
 
@@ -413,6 +426,10 @@ describe('AgentsController', () => {
           provide: AgentRecordingCacheService,
           useValue: { isRecording: jest.fn(), invalidate: mockInvalidate },
         },
+        {
+          provide: AgentCompressionCacheService,
+          useValue: { isResponseCompressionEnabled: jest.fn(), invalidate: jest.fn() },
+        },
       ],
     }).compile();
     const ctrl = module.get<AgentsController>(AgentsController);
@@ -429,6 +446,7 @@ describe('AgentsController', () => {
 
   it('routes compression settings through updateCompressionSettings on PATCH', async () => {
     const mockUpdateCompression = jest.fn().mockResolvedValue({ agentId: 'id-7' });
+    const mockCompressionInvalidate = jest.fn();
 
     const module: TestingModule = await Test.createTestingModule({
       imports: [CacheModule.register()],
@@ -460,6 +478,13 @@ describe('AgentsController', () => {
           provide: AgentRecordingCacheService,
           useValue: { isRecording: jest.fn(), invalidate: jest.fn() },
         },
+        {
+          provide: AgentCompressionCacheService,
+          useValue: {
+            isResponseCompressionEnabled: jest.fn(),
+            invalidate: mockCompressionInvalidate,
+          },
+        },
       ],
     }).compile();
     const ctrl = module.get<AgentsController>(AgentsController);
@@ -475,6 +500,7 @@ describe('AgentsController', () => {
       compress_tool_output: undefined,
       compress_response: true,
     });
+    expect(mockCompressionInvalidate).toHaveBeenCalledWith('id-7');
     expect(result).toMatchObject({
       compress_prompt: true,
       compress_response: true,
@@ -516,6 +542,10 @@ describe('AgentsController', () => {
         {
           provide: AgentRecordingCacheService,
           useValue: { isRecording: jest.fn(), invalidate: jest.fn() },
+        },
+        {
+          provide: AgentCompressionCacheService,
+          useValue: { isResponseCompressionEnabled: jest.fn(), invalidate: jest.fn() },
         },
       ],
     }).compile();
@@ -562,6 +592,10 @@ describe('AgentsController', () => {
           provide: AgentRecordingCacheService,
           useValue: { isRecording: jest.fn(), invalidate: jest.fn() },
         },
+        {
+          provide: AgentCompressionCacheService,
+          useValue: { isResponseCompressionEnabled: jest.fn(), invalidate: jest.fn() },
+        },
       ],
     }).compile();
 
@@ -605,6 +639,10 @@ describe('AgentsController', () => {
         {
           provide: AgentRecordingCacheService,
           useValue: { isRecording: jest.fn(), invalidate: jest.fn() },
+        },
+        {
+          provide: AgentCompressionCacheService,
+          useValue: { isResponseCompressionEnabled: jest.fn(), invalidate: jest.fn() },
         },
       ],
     }).compile();
@@ -707,6 +745,10 @@ describe('AgentsController', () => {
         {
           provide: AgentRecordingCacheService,
           useValue: { isRecording: jest.fn(), invalidate: jest.fn() },
+        },
+        {
+          provide: AgentCompressionCacheService,
+          useValue: { isResponseCompressionEnabled: jest.fn(), invalidate: jest.fn() },
         },
       ],
     }).compile();

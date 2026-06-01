@@ -29,6 +29,7 @@ import { AGENT_LIST_CACHE_TTL_MS } from '../../common/constants/cache.constants'
 import { slugify } from '../../common/utils/slugify';
 import { TenantCacheService } from '../../common/services/tenant-cache.service';
 import { AgentRecordingCacheService } from '../../common/services/agent-recording-cache.service';
+import { AgentCompressionCacheService } from '../../common/services/agent-compression-cache.service';
 
 @Controller('api/v1')
 export class AgentsController {
@@ -40,6 +41,7 @@ export class AgentsController {
     private readonly tenantCache: TenantCacheService,
     private readonly eventBus: IngestEventBusService,
     private readonly recordingCache: AgentRecordingCacheService,
+    private readonly compressionCache: AgentCompressionCacheService,
     @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) {}
 
@@ -205,7 +207,12 @@ export class AgentsController {
     const hasCompressionUpdate = Object.values(compressionFields).some((v) => v !== undefined);
     if (hasCompressionUpdate) {
       const effectiveName = body.name ? slugify(body.name)! : agentName;
-      await this.lifecycle.updateCompressionSettings(user.id, effectiveName, compressionFields);
+      const { agentId } = await this.lifecycle.updateCompressionSettings(
+        user.id,
+        effectiveName,
+        compressionFields,
+      );
+      this.compressionCache.invalidate(agentId);
       if (body.compress_prompt !== undefined) result['compress_prompt'] = body.compress_prompt;
       if (body.compress_tool_output !== undefined) {
         result['compress_tool_output'] = body.compress_tool_output;

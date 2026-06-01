@@ -138,3 +138,15 @@ export type {
   PlaygroundHistoryRunSummary,
   PlaygroundHistoryRunDetail,
 } from './playground';
+export {
+  RESPONSE_COMPRESSION_INSTRUCTION,
+  RESPONSE_COMPRESSION_MARKER,
+  RESPONSE_COMPRESSION_SUFFIX,
+  applyResponseCompressionInstruction,
+  requestBodyHasResponseCompressionMarker,
+} from './response-compression';
+export type { ResponseCompressionApiMode } from './response-compression';
+export { applyPromptCompression, compressUserPromptText } from './prompt-compression';
+export type { PromptCompressionApiMode } from './prompt-compression';
+export { applyToolOutputCompression, compressToolOutputText } from './tool-output-compression';
+export type { ToolOutputCompressionApiMode } from './tool-output-compression';

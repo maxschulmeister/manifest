@@ -1,5 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { AgentCompressionCacheService } from '../../common/services/agent-compression-cache.service';
 import { ResolveService } from '../resolve/resolve.service';
 import { ProviderKeyService } from '../routing-core/provider-key.service';
 import { TierService } from '../routing-core/tier.service';
@@ -29,6 +30,9 @@ import {
   modelParamsScopeForRouting,
   routeEquals,
   snapshotRequestParams,
+  applyPromptCompression,
+  applyResponseCompressionInstruction,
+  applyToolOutputCompression,
 } from 'manifest-shared';
 import type { ParamMergeContext } from './proxy-fallback.service';
 import {
@@ -143,6 +147,7 @@ export class ProxyService {
     private readonly reasoningCache: ReasoningContentCache,
     private readonly modelParamsService: AgentModelParamsService,
     private readonly providerParamSpecs: ProviderParamSpecService,
+    private readonly compressionCache: AgentCompressionCacheService,
   ) {}
 
   async proxyRequest(opts: ProxyRequestOptions): Promise<ProxyResult> {
@@ -263,12 +268,20 @@ export class ProxyService {
       specs: primarySpecs,
     });
 
+    const compressionFlags = await this.compressionCache.getCompressionFlags(agentId);
+    const { forwardBody, forwardChatBody } = this.buildForwardBodies(
+      body,
+      chatBody,
+      apiMode,
+      compressionFlags,
+    );
+
     const forward = await this.fallbackService.tryForwardToProvider({
       provider: route.provider,
       apiKey: credentials.apiKey,
       model: primaryModel,
-      body,
-      chatBody,
+      body: forwardBody,
+      chatBody: forwardChatBody,
       stream,
       sessionKey,
       signal,
@@ -289,8 +302,8 @@ export class ProxyService {
         resolved,
         primaryModel,
         forward,
-        body,
-        chatBody,
+        body: forwardBody,
+        chatBody: forwardChatBody,
         stream,
         sessionKey,
         signal,
@@ -352,8 +365,8 @@ export class ProxyService {
         resolved,
         primaryModel,
         forward: syntheticForward,
-        body,
-        chatBody,
+        body: forwardBody,
+        chatBody: forwardChatBody,
         stream,
         sessionKey,
         signal,
@@ -385,6 +398,44 @@ export class ProxyService {
         request_params: primaryRequestParams,
       }),
     };
+  }
+
+  private buildForwardBodies(
+    body: ProxyRequestOptions['body'],
+    chatBody: ProxyRequestOptions['body'] | undefined,
+    apiMode: ProxyApiMode,
+    flags: {
+      compress_prompt: boolean;
+      compress_tool_output: boolean;
+      compress_response: boolean;
+    },
+  ): { forwardBody: ProxyRequestOptions['body']; forwardChatBody?: ProxyRequestOptions['body'] } {
+    if (!flags.compress_prompt && !flags.compress_tool_output && !flags.compress_response) {
+      return { forwardBody: body, forwardChatBody: chatBody };
+    }
+
+    const forwardBody = structuredClone(body) as Record<string, unknown>;
+
+    if (flags.compress_prompt) {
+      applyPromptCompression(forwardBody, apiMode);
+    }
+    if (flags.compress_tool_output) {
+      applyToolOutputCompression(forwardBody, apiMode);
+    }
+    if (flags.compress_response) {
+      applyResponseCompressionInstruction(forwardBody, apiMode);
+    }
+
+    if (!chatBody) {
+      return { forwardBody: forwardBody as ProxyRequestOptions['body'] };
+    }
+
+    const forwardChatBody =
+      apiMode === 'responses'
+        ? (toChatCompletionsRequest(forwardBody) as ProxyRequestOptions['body'])
+        : (messagesToChatCompletionsRequest(forwardBody) as ProxyRequestOptions['body']);
+
+    return { forwardBody: forwardBody as ProxyRequestOptions['body'], forwardChatBody };
   }
 
   private recordTierIfScoring(sessionKey: string, tier: TierSlot): void {

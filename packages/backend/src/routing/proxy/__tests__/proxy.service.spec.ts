@@ -2,6 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   getProviderParamSpecs,
+  RESPONSE_COMPRESSION_MARKER,
   type AuthType,
   type ModelRoute,
   type ProviderParamSpecCatalog,
@@ -94,6 +95,7 @@ describe('ProxyService — orchestration', () => {
   let reasoningCache: ReasoningContentCache;
   let modelParamsService: { get: jest.Mock; list: jest.Mock; set: jest.Mock; delete: jest.Mock };
   let providerParamSpecs: { getSpecs: jest.Mock; list: jest.Mock };
+  let compressionCache: { getCompressionFlags: jest.Mock };
   let svc: ProxyService;
 
   beforeEach(() => {
@@ -147,6 +149,13 @@ describe('ProxyService — orchestration', () => {
       ),
       list: jest.fn().mockResolvedValue(specCatalog),
     };
+    compressionCache = {
+      getCompressionFlags: jest.fn().mockResolvedValue({
+        compress_prompt: false,
+        compress_tool_output: false,
+        compress_response: false,
+      }),
+    };
 
     svc = new ProxyService(
       resolveService as unknown as ResolveService,
@@ -167,6 +176,7 @@ describe('ProxyService — orchestration', () => {
       reasoningCache,
       modelParamsService as unknown as AgentModelParamsService,
       providerParamSpecs as unknown as ProviderParamSpecService,
+      compressionCache as never,
     );
   });
 
@@ -485,6 +495,433 @@ describe('ProxyService — orchestration', () => {
         'api_key',
         'claude-sonnet-4-6',
       );
+    });
+
+    it('forwards unchanged when response compression is disabled', async () => {
+      compressionCache.getCompressionFlags.mockResolvedValue({
+        compress_prompt: false,
+        compress_tool_output: false,
+        compress_response: false,
+      });
+      resolveService.resolve.mockResolvedValue({
+        tier: 'standard',
+        route: route('openai', 'api_key', 'gpt-4o'),
+        fallback_routes: null,
+        confidence: 0.9,
+        score: 5,
+        reason: 'scored',
+      });
+      fallbackService.tryForwardToProvider.mockResolvedValue({
+        response: okResponse(),
+        isGoogle: false,
+        isAnthropic: false,
+        isChatGpt: false,
+      });
+
+      const body = { messages: [{ role: 'user', content: 'hi' }] };
+      await svc.proxyRequest(baseOpts({ body: body as never }));
+
+      const forwarded = fallbackService.tryForwardToProvider.mock.calls[0][0].body;
+      expect(forwarded).toBe(body);
+      expect(JSON.stringify(forwarded)).not.toContain(RESPONSE_COMPRESSION_MARKER);
+    });
+
+    it('injects concise-reply instruction when response compression is enabled', async () => {
+      compressionCache.getCompressionFlags.mockResolvedValue({
+        compress_prompt: false,
+        compress_tool_output: false,
+        compress_response: true,
+      });
+      resolveService.resolve.mockResolvedValue({
+        tier: 'standard',
+        route: route('openai', 'api_key', 'gpt-4o'),
+        fallback_routes: null,
+        confidence: 0.9,
+        score: 5,
+        reason: 'scored',
+      });
+      fallbackService.tryForwardToProvider.mockResolvedValue({
+        response: okResponse(),
+        isGoogle: false,
+        isAnthropic: false,
+        isChatGpt: false,
+      });
+
+      const body = { messages: [{ role: 'user', content: 'hi' }] };
+      await svc.proxyRequest(baseOpts({ body: body as never }));
+
+      expect(JSON.stringify(body)).not.toContain(RESPONSE_COMPRESSION_MARKER);
+      const forwarded = fallbackService.tryForwardToProvider.mock.calls[0][0].body;
+      expect(forwarded).not.toBe(body);
+      expect(JSON.stringify(forwarded)).toContain(RESPONSE_COMPRESSION_MARKER);
+    });
+
+    it('injects into Responses API bodies and rebuilds chatBody for routing adapters', async () => {
+      compressionCache.getCompressionFlags.mockResolvedValue({
+        compress_prompt: false,
+        compress_tool_output: false,
+        compress_response: true,
+      });
+      resolveService.resolve.mockResolvedValue({
+        tier: 'standard',
+        route: route('openai', 'api_key', 'gpt-4o'),
+        fallback_routes: null,
+        confidence: 0.9,
+        score: 5,
+        reason: 'scored',
+      });
+      fallbackService.tryForwardToProvider.mockResolvedValue({
+        response: okResponse(),
+        isGoogle: false,
+        isAnthropic: false,
+        isChatGpt: false,
+      });
+
+      const body = { input: 'hello', model: 'gpt-4o' };
+      await svc.proxyRequest(baseOpts({ body: body as never, apiMode: 'responses' }));
+
+      expect(JSON.stringify(body)).not.toContain(RESPONSE_COMPRESSION_MARKER);
+      const call = fallbackService.tryForwardToProvider.mock.calls[0][0];
+      expect(JSON.stringify(call.body)).toContain(RESPONSE_COMPRESSION_MARKER);
+      expect(JSON.stringify(call.chatBody)).toContain(RESPONSE_COMPRESSION_MARKER);
+    });
+
+    it('does not duplicate compression instruction on fallback forwarding', async () => {
+      compressionCache.getCompressionFlags.mockResolvedValue({
+        compress_prompt: false,
+        compress_tool_output: false,
+        compress_response: true,
+      });
+      resolveService.resolve.mockResolvedValue({
+        tier: 'standard',
+        route: route('openai', 'api_key', 'gpt-4o'),
+        fallback_routes: [route('anthropic', 'api_key', 'claude-sonnet-4-6')],
+        confidence: 0.9,
+        score: 5,
+        reason: 'scored',
+      });
+      fallbackService.tryForwardToProvider.mockResolvedValue({
+        response: new Response('error', { status: 503 }),
+        isGoogle: false,
+        isAnthropic: false,
+        isChatGpt: false,
+      });
+      fallbackService.tryFallbacks.mockResolvedValue({
+        success: {
+          forward: {
+            response: okResponse(),
+            isGoogle: false,
+            isAnthropic: true,
+            isChatGpt: false,
+          },
+          model: 'claude-sonnet-4-6',
+          provider: 'anthropic',
+          authType: 'api_key',
+          fallbackIndex: 0,
+        },
+        failures: [],
+      });
+
+      const body = { messages: [{ role: 'user', content: 'hi' }] };
+      await svc.proxyRequest(baseOpts({ body: body as never }));
+
+      const primaryBody = fallbackService.tryForwardToProvider.mock.calls[0][0].body;
+      const fallbackBody = fallbackService.tryFallbacks.mock.calls[0][3];
+      expect(JSON.stringify(primaryBody).match(/\[manifest:compress-response\]/g)).toHaveLength(1);
+      expect(JSON.stringify(fallbackBody).match(/\[manifest:compress-response\]/g)).toHaveLength(1);
+      expect(fallbackBody).toBe(primaryBody);
+    });
+
+    it('forwards unchanged when prompt compression is disabled', async () => {
+      compressionCache.getCompressionFlags.mockResolvedValue({
+        compress_prompt: false,
+        compress_tool_output: false,
+        compress_response: false,
+      });
+      resolveService.resolve.mockResolvedValue({
+        tier: 'standard',
+        route: route('openai', 'api_key', 'gpt-4o'),
+        fallback_routes: null,
+        confidence: 0.9,
+        score: 5,
+        reason: 'scored',
+      });
+      fallbackService.tryForwardToProvider.mockResolvedValue({
+        response: okResponse(),
+        isGoogle: false,
+        isAnthropic: false,
+        isChatGpt: false,
+      });
+
+      const longPrompt =
+        'I would really like you to basically just summarize this please in one sentence.';
+      const body = { messages: [{ role: 'user', content: longPrompt }] };
+      await svc.proxyRequest(baseOpts({ body: body as never }));
+
+      expect(fallbackService.tryForwardToProvider.mock.calls[0][0].body).toBe(body);
+    });
+
+    it('shortens user prompt prose when prompt compression is enabled', async () => {
+      compressionCache.getCompressionFlags.mockResolvedValue({
+        compress_prompt: true,
+        compress_tool_output: false,
+        compress_response: false,
+      });
+      resolveService.resolve.mockResolvedValue({
+        tier: 'standard',
+        route: route('openai', 'api_key', 'gpt-4o'),
+        fallback_routes: null,
+        confidence: 0.9,
+        score: 5,
+        reason: 'scored',
+      });
+      fallbackService.tryForwardToProvider.mockResolvedValue({
+        response: okResponse(),
+        isGoogle: false,
+        isAnthropic: false,
+        isChatGpt: false,
+      });
+
+      const longPrompt =
+        'I would really like you to basically just summarize this please in one sentence.';
+      const body = { messages: [{ role: 'user', content: longPrompt }] };
+      await svc.proxyRequest(baseOpts({ body: body as never }));
+
+      expect(body.messages[0].content).toBe(longPrompt);
+      const forwarded = fallbackService.tryForwardToProvider.mock.calls[0][0].body as {
+        messages: { content: string }[];
+      };
+      expect(forwarded).not.toBe(body);
+      expect(String(forwarded.messages[0].content).length).toBeLessThan(longPrompt.length);
+    });
+
+    it('preserves code fences in forwarded user prompts', async () => {
+      compressionCache.getCompressionFlags.mockResolvedValue({
+        compress_prompt: true,
+        compress_tool_output: false,
+        compress_response: false,
+      });
+      resolveService.resolve.mockResolvedValue({
+        tier: 'standard',
+        route: route('openai', 'api_key', 'gpt-4o'),
+        fallback_routes: null,
+        confidence: 0.9,
+        score: 5,
+        reason: 'scored',
+      });
+      fallbackService.tryForwardToProvider.mockResolvedValue({
+        response: okResponse(),
+        isGoogle: false,
+        isAnthropic: false,
+        isChatGpt: false,
+      });
+
+      const prompt =
+        'I would really like you to basically just fix please.\n\n```ts\nconst x = 1;\n```';
+      const body = { messages: [{ role: 'user', content: prompt }] };
+      await svc.proxyRequest(baseOpts({ body: body as never }));
+
+      const forwarded = fallbackService.tryForwardToProvider.mock.calls[0][0].body as {
+        messages: { content: string }[];
+      };
+      expect(String(forwarded.messages[0].content)).toContain('```ts\nconst x = 1;\n```');
+    });
+
+    it('reuses the same compressed forward body on provider fallback', async () => {
+      compressionCache.getCompressionFlags.mockResolvedValue({
+        compress_prompt: true,
+        compress_tool_output: false,
+        compress_response: false,
+      });
+      resolveService.resolve.mockResolvedValue({
+        tier: 'standard',
+        route: route('openai', 'api_key', 'gpt-4o'),
+        fallback_routes: [route('anthropic', 'api_key', 'claude-sonnet-4-6')],
+        confidence: 0.9,
+        score: 5,
+        reason: 'scored',
+      });
+      fallbackService.tryForwardToProvider.mockResolvedValue({
+        response: new Response('error', { status: 503 }),
+        isGoogle: false,
+        isAnthropic: false,
+        isChatGpt: false,
+      });
+      fallbackService.tryFallbacks.mockResolvedValue({
+        success: {
+          forward: {
+            response: okResponse(),
+            isGoogle: false,
+            isAnthropic: true,
+            isChatGpt: false,
+          },
+          model: 'claude-sonnet-4-6',
+          provider: 'anthropic',
+          authType: 'api_key',
+          fallbackIndex: 0,
+        },
+        failures: [],
+      });
+
+      const longPrompt =
+        'I would really like you to basically just summarize this please in one sentence.';
+      const body = { messages: [{ role: 'user', content: longPrompt }] };
+      await svc.proxyRequest(baseOpts({ body: body as never }));
+
+      const primaryBody = fallbackService.tryForwardToProvider.mock.calls[0][0].body as {
+        messages: { content: string }[];
+      };
+      const fallbackBody = fallbackService.tryFallbacks.mock.calls[0][3];
+      expect(fallbackBody).toBe(primaryBody);
+      expect(String(primaryBody.messages[0].content).length).toBeLessThan(longPrompt.length);
+    });
+
+    it('forwards unchanged when tool output compression is disabled', async () => {
+      compressionCache.getCompressionFlags.mockResolvedValue({
+        compress_prompt: false,
+        compress_tool_output: false,
+        compress_response: false,
+      });
+      resolveService.resolve.mockResolvedValue({
+        tier: 'standard',
+        route: route('openai', 'api_key', 'gpt-4o'),
+        fallback_routes: null,
+        confidence: 0.9,
+        score: 5,
+        reason: 'scored',
+      });
+      fallbackService.tryForwardToProvider.mockResolvedValue({
+        response: okResponse(),
+        isGoogle: false,
+        isAnthropic: false,
+        isChatGpt: false,
+      });
+
+      const log = ['line', 'line', 'line'].join('\n');
+      const body = {
+        messages: [{ role: 'tool', tool_call_id: 'call_1', content: log }],
+      };
+      await svc.proxyRequest(baseOpts({ body: body as never }));
+
+      expect(fallbackService.tryForwardToProvider.mock.calls[0][0].body).toBe(body);
+    });
+
+    it('shortens tool output logs when tool output compression is enabled', async () => {
+      compressionCache.getCompressionFlags.mockResolvedValue({
+        compress_prompt: false,
+        compress_tool_output: true,
+        compress_response: false,
+      });
+      resolveService.resolve.mockResolvedValue({
+        tier: 'standard',
+        route: route('openai', 'api_key', 'gpt-4o'),
+        fallback_routes: null,
+        confidence: 0.9,
+        score: 5,
+        reason: 'scored',
+      });
+      fallbackService.tryForwardToProvider.mockResolvedValue({
+        response: okResponse(),
+        isGoogle: false,
+        isAnthropic: false,
+        isChatGpt: false,
+      });
+
+      const log = ['line', 'line', 'line'].join('\n');
+      const body = {
+        messages: [{ role: 'tool', tool_call_id: 'call_1', content: log }],
+      };
+      await svc.proxyRequest(baseOpts({ body: body as never }));
+
+      expect(body.messages[0].content).toBe(log);
+      const forwarded = fallbackService.tryForwardToProvider.mock.calls[0][0].body as {
+        messages: { content: string }[];
+      };
+      expect(forwarded).not.toBe(body);
+      expect(String(forwarded.messages[0].content).length).toBeLessThan(log.length);
+      expect(String(forwarded.messages[0].content)).toContain('[x3] line');
+    });
+
+    it('keeps tool output unchanged when compression saves no length', async () => {
+      compressionCache.getCompressionFlags.mockResolvedValue({
+        compress_prompt: false,
+        compress_tool_output: true,
+        compress_response: false,
+      });
+      resolveService.resolve.mockResolvedValue({
+        tier: 'standard',
+        route: route('openai', 'api_key', 'gpt-4o'),
+        fallback_routes: null,
+        confidence: 0.9,
+        score: 5,
+        reason: 'scored',
+      });
+      fallbackService.tryForwardToProvider.mockResolvedValue({
+        response: okResponse(),
+        isGoogle: false,
+        isAnthropic: false,
+        isChatGpt: false,
+      });
+
+      const body = {
+        messages: [{ role: 'tool', tool_call_id: 'call_1', content: 'ok' }],
+      };
+      await svc.proxyRequest(baseOpts({ body: body as never }));
+
+      const forwarded = fallbackService.tryForwardToProvider.mock.calls[0][0].body as {
+        messages: { content: string }[];
+      };
+      expect(forwarded.messages[0].content).toBe('ok');
+    });
+
+    it('reuses the same compressed tool output body on provider fallback', async () => {
+      compressionCache.getCompressionFlags.mockResolvedValue({
+        compress_prompt: false,
+        compress_tool_output: true,
+        compress_response: false,
+      });
+      resolveService.resolve.mockResolvedValue({
+        tier: 'standard',
+        route: route('openai', 'api_key', 'gpt-4o'),
+        fallback_routes: [route('anthropic', 'api_key', 'claude-sonnet-4-6')],
+        confidence: 0.9,
+        score: 5,
+        reason: 'scored',
+      });
+      fallbackService.tryForwardToProvider.mockResolvedValue({
+        response: new Response('error', { status: 503 }),
+        isGoogle: false,
+        isAnthropic: false,
+        isChatGpt: false,
+      });
+      fallbackService.tryFallbacks.mockResolvedValue({
+        success: {
+          forward: {
+            response: okResponse(),
+            isGoogle: false,
+            isAnthropic: true,
+            isChatGpt: false,
+          },
+          model: 'claude-sonnet-4-6',
+          provider: 'anthropic',
+          authType: 'api_key',
+          fallbackIndex: 0,
+        },
+        failures: [],
+      });
+
+      const log = ['Downloading package', 'Downloading package'].join('\n');
+      const body = {
+        messages: [{ role: 'tool', tool_call_id: 'call_1', content: log }],
+      };
+      await svc.proxyRequest(baseOpts({ body: body as never }));
+
+      const primaryBody = fallbackService.tryForwardToProvider.mock.calls[0][0].body;
+      const fallbackBody = fallbackService.tryFallbacks.mock.calls[0][3];
+      expect(fallbackBody).toBe(primaryBody);
+      expect(
+        String((primaryBody as { messages: { content: string }[] }).messages[0].content),
+      ).toContain('[x2] Downloading package');
     });
 
     it('passes the inbound body through unchanged so the per-attempt merge can re-merge each fallback', async () => {
