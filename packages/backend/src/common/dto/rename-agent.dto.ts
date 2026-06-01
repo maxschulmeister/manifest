@@ -34,4 +34,16 @@ export class RenameAgentDto {
   @IsOptional()
   @IsBoolean()
   record_messages?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  compress_prompt?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  compress_tool_output?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  compress_response?: boolean;
 }

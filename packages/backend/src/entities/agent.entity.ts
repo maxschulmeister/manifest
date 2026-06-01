@@ -33,6 +33,15 @@ export class Agent {
   @Column('boolean', { default: true })
   record_messages!: boolean;
 
+  @Column('boolean', { default: false })
+  compress_prompt!: boolean;
+
+  @Column('boolean', { default: false })
+  compress_tool_output!: boolean;
+
+  @Column('boolean', { default: false })
+  compress_response!: boolean;
+
   @Column('varchar', { nullable: true })
   savings_baseline_model!: string | null;
 

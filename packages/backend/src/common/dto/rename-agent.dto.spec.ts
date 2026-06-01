@@ -65,4 +65,14 @@ describe('RenameAgentDto', () => {
     const errors = await validate(dto);
     expect(errors.length).toBeGreaterThan(0);
   });
+
+  it('accepts compression boolean fields', async () => {
+    const dto = plainToInstance(RenameAgentDto, {
+      compress_prompt: true,
+      compress_tool_output: false,
+      compress_response: true,
+    });
+    const errors = await validate(dto);
+    expect(errors).toHaveLength(0);
+  });
 });

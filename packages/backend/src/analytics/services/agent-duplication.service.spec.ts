@@ -217,6 +217,9 @@ describe('AgentDuplicationService', () => {
           agent_category: 'personal',
           agent_platform: 'openclaw',
           complexity_routing_enabled: true,
+          compress_prompt: true,
+          compress_tool_output: false,
+          compress_response: true,
         })
         .mockResolvedValueOnce(null);
 
@@ -325,6 +328,9 @@ describe('AgentDuplicationService', () => {
       expect(agentRow['tenant_id']).toBe('t1');
       expect(agentRow['agent_category']).toBe('personal');
       expect(agentRow['complexity_routing_enabled']).toBe(true);
+      expect(agentRow['compress_prompt']).toBe(true);
+      expect(agentRow['compress_tool_output']).toBe(false);
+      expect(agentRow['compress_response']).toBe(true);
 
       expect(insertedRows['AgentApiKey']).toHaveLength(1);
       const [apiKeyRow] = insertedRows['AgentApiKey'] as Array<Record<string, unknown>>;

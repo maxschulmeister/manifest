@@ -538,6 +538,48 @@ describe("Settings", () => {
     });
   });
 
+  describe("Compression toggles", () => {
+    it("renders Compression section with three toggles defaulting off", async () => {
+      mockGetAgentInfo.mockResolvedValue({
+        agent_name: "test-agent",
+        agent_category: "personal",
+        agent_platform: "openclaw",
+        compress_prompt: false,
+        compress_tool_output: false,
+        compress_response: false,
+      });
+      const { container } = render(() => <Settings />);
+      await vi.waitFor(() => {
+        expect(container.textContent).toContain("Compression");
+        expect(container.textContent).toContain("Prompt");
+        expect(container.textContent).toContain("Tool output");
+        expect(container.textContent).toContain("Response");
+      });
+    });
+
+    it("calls updateAgent when Prompt compression is toggled on", async () => {
+      mockGetAgentInfo.mockResolvedValue({
+        agent_name: "test-agent",
+        agent_category: "personal",
+        agent_platform: "openclaw",
+        compress_prompt: false,
+        compress_tool_output: false,
+        compress_response: false,
+      });
+      const { container } = render(() => <Settings />);
+      await vi.waitFor(() => {
+        expect(container.textContent).toContain("Prompt");
+      });
+      const promptToggle = Array.from(container.querySelectorAll("button")).find(
+        (b) => b.getAttribute("aria-label") === "Toggle prompt compression",
+      )!;
+      fireEvent.click(promptToggle);
+      await vi.waitFor(() => {
+        expect(mockUpdateAgent).toHaveBeenCalledWith("test-agent", { compress_prompt: true });
+      });
+    });
+  });
+
   describe("Logging toggle (danger zone buttons)", () => {
     it("shows Enable logs button when logging is off", async () => {
       mockGetAgentInfo.mockResolvedValue({

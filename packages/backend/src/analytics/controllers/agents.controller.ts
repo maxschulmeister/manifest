@@ -197,6 +197,23 @@ export class AgentsController {
       result['record_messages'] = body.record_messages;
     }
 
+    const compressionFields = {
+      compress_prompt: body.compress_prompt,
+      compress_tool_output: body.compress_tool_output,
+      compress_response: body.compress_response,
+    };
+    const hasCompressionUpdate = Object.values(compressionFields).some((v) => v !== undefined);
+    if (hasCompressionUpdate) {
+      const effectiveName = body.name ? slugify(body.name)! : agentName;
+      await this.lifecycle.updateCompressionSettings(user.id, effectiveName, compressionFields);
+      if (body.compress_prompt !== undefined) result['compress_prompt'] = body.compress_prompt;
+      if (body.compress_tool_output !== undefined) {
+        result['compress_tool_output'] = body.compress_tool_output;
+      }
+      if (body.compress_response !== undefined)
+        result['compress_response'] = body.compress_response;
+    }
+
     await this.cacheManager.del(this.agentListCacheKey(user.id));
     this.eventBus.emit(user.id, 'agent');
     return result;

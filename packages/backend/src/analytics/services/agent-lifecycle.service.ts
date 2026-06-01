@@ -26,6 +26,9 @@ export class AgentLifecycleService {
     agent_category: string | null;
     agent_platform: string | null;
     record_messages: boolean;
+    compress_prompt: boolean;
+    compress_tool_output: boolean;
+    compress_response: boolean;
   } | null> {
     const agent = await this.findAgentByUser(userId, agentName);
     if (!agent) return null;
@@ -35,6 +38,9 @@ export class AgentLifecycleService {
       agent_category: agent.agent_category ?? null,
       agent_platform: agent.agent_platform ?? null,
       record_messages: agent.record_messages === true,
+      compress_prompt: agent.compress_prompt === true,
+      compress_tool_output: agent.compress_tool_output === true,
+      compress_response: agent.compress_response === true,
     };
   }
 
@@ -99,6 +105,37 @@ export class AgentLifecycleService {
       .set(update)
       .where('id = :id', { id: agent.id })
       .execute();
+  }
+
+  async updateCompressionSettings(
+    userId: string,
+    agentName: string,
+    fields: {
+      compress_prompt?: boolean;
+      compress_tool_output?: boolean;
+      compress_response?: boolean;
+    },
+  ): Promise<{ agentId: string }> {
+    const agent = await this.findAgentByUser(userId, agentName);
+    if (!agent) throw new NotFoundException(`Agent "${agentName}" not found`);
+
+    const update: Record<string, boolean> = {};
+    if (fields.compress_prompt !== undefined) update['compress_prompt'] = fields.compress_prompt;
+    if (fields.compress_tool_output !== undefined) {
+      update['compress_tool_output'] = fields.compress_tool_output;
+    }
+    if (fields.compress_response !== undefined)
+      update['compress_response'] = fields.compress_response;
+    if (Object.keys(update).length === 0) return { agentId: agent.id };
+
+    await this.agentRepo
+      .createQueryBuilder()
+      .update('agents')
+      .set(update)
+      .where('id = :id', { id: agent.id })
+      .execute();
+
+    return { agentId: agent.id };
   }
 
   async setRecordMessages(

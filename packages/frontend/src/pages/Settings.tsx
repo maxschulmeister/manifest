@@ -89,6 +89,31 @@ const Settings: Component = () => {
   const [togglingLogs, setTogglingLogs] = createSignal(false);
   const [showDisableLogsModal, setShowDisableLogsModal] = createSignal(false);
 
+  const compressPrompt = () => agentInfo()?.compress_prompt === true;
+  const compressToolOutput = () => agentInfo()?.compress_tool_output === true;
+  const compressResponse = () => agentInfo()?.compress_response === true;
+  const [togglingCompression, setTogglingCompression] = createSignal<
+    'prompt' | 'tool_output' | 'response' | null
+  >(null);
+
+  const handleCompressionToggle = async (
+    field: 'compress_prompt' | 'compress_tool_output' | 'compress_response',
+    next: boolean,
+    key: 'prompt' | 'tool_output' | 'response',
+  ) => {
+    if (togglingCompression()) return;
+    setTogglingCompression(key);
+    try {
+      await updateAgent(agentName(), { [field]: next });
+      await refetchInfo();
+      toast.success('Compression settings saved');
+    } catch {
+      /* error toast handled by fetchMutate */
+    } finally {
+      setTogglingCompression(null);
+    }
+  };
+
   const handleToggleLogs = async (next: boolean) => {
     if (togglingLogs()) return;
     if (!next) {
@@ -369,6 +394,90 @@ const Settings: Component = () => {
           </div>
         </Show>
       </ErrorBoundary>
+
+      {/* -- Compression -------------------------------- */}
+      <h2 class="settings-section__title">Compression</h2>
+      <div class="settings-card">
+        <div class="settings-card__row">
+          <div class="settings-card__label">
+            <span class="settings-card__label-title">Prompt</span>
+            <span class="settings-card__label-desc">
+              Compress prompt content before it is sent to the model.
+            </span>
+          </div>
+          <div class="settings-card__control">
+            <button
+              type="button"
+              class="routing-switch"
+              classList={{ 'routing-switch--on': compressPrompt() }}
+              aria-pressed={compressPrompt()}
+              aria-label="Toggle prompt compression"
+              disabled={togglingCompression() !== null || agentInfo.loading}
+              onClick={() =>
+                handleCompressionToggle('compress_prompt', !compressPrompt(), 'prompt')
+              }
+            >
+              <span class="routing-switch__track">
+                <span class="routing-switch__thumb" />
+              </span>
+            </button>
+          </div>
+        </div>
+        <div class="settings-card__row">
+          <div class="settings-card__label">
+            <span class="settings-card__label-title">Tool output</span>
+            <span class="settings-card__label-desc">
+              Compress tool result payloads returned to the model.
+            </span>
+          </div>
+          <div class="settings-card__control">
+            <button
+              type="button"
+              class="routing-switch"
+              classList={{ 'routing-switch--on': compressToolOutput() }}
+              aria-pressed={compressToolOutput()}
+              aria-label="Toggle tool output compression"
+              disabled={togglingCompression() !== null || agentInfo.loading}
+              onClick={() =>
+                handleCompressionToggle(
+                  'compress_tool_output',
+                  !compressToolOutput(),
+                  'tool_output',
+                )
+              }
+            >
+              <span class="routing-switch__track">
+                <span class="routing-switch__thumb" />
+              </span>
+            </button>
+          </div>
+        </div>
+        <div class="settings-card__row">
+          <div class="settings-card__label">
+            <span class="settings-card__label-title">Response</span>
+            <span class="settings-card__label-desc">
+              Compress model responses before they are stored or returned.
+            </span>
+          </div>
+          <div class="settings-card__control">
+            <button
+              type="button"
+              class="routing-switch"
+              classList={{ 'routing-switch--on': compressResponse() }}
+              aria-pressed={compressResponse()}
+              aria-label="Toggle response compression"
+              disabled={togglingCompression() !== null || agentInfo.loading}
+              onClick={() =>
+                handleCompressionToggle('compress_response', !compressResponse(), 'response')
+              }
+            >
+              <span class="routing-switch__track">
+                <span class="routing-switch__thumb" />
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* -- Danger Zone -------------------------------- */}
       <h2 class="settings-section__title settings-section__title--danger">Danger zone</h2>

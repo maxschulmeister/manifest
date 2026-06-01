@@ -83,9 +83,13 @@ describe('AgentsController', () => {
                     agent_category: 'app',
                     agent_platform: 'openai-sdk',
                     record_messages: false,
+                    compress_prompt: false,
+                    compress_tool_output: false,
+                    compress_response: false,
                   }
                 : null,
             ),
+            updateCompressionSettings: jest.fn().mockResolvedValue({ agentId: 'id-1' }),
           },
         },
         {
@@ -155,6 +159,9 @@ describe('AgentsController', () => {
         agent_category: 'app',
         agent_platform: 'openai-sdk',
         record_messages: false,
+        compress_prompt: false,
+        compress_tool_output: false,
+        compress_response: false,
       },
     });
   });
@@ -418,6 +425,60 @@ describe('AgentsController', () => {
     expect(mockSetRecord).toHaveBeenCalledWith('u1', 'bot-1', true);
     expect(mockInvalidate).toHaveBeenCalledWith('id-7');
     expect(result).toMatchObject({ record_messages: true });
+  });
+
+  it('routes compression settings through updateCompressionSettings on PATCH', async () => {
+    const mockUpdateCompression = jest.fn().mockResolvedValue({ agentId: 'id-7' });
+
+    const module: TestingModule = await Test.createTestingModule({
+      imports: [CacheModule.register()],
+      controllers: [AgentsController],
+      providers: [
+        { provide: TimeseriesQueriesService, useValue: { getAgentList: jest.fn() } },
+        {
+          provide: AgentLifecycleService,
+          useValue: {
+            deleteAgent: jest.fn(),
+            renameAgent: jest.fn(),
+            updateAgentType: jest.fn(),
+            setRecordMessages: jest.fn(),
+            updateCompressionSettings: mockUpdateCompression,
+          },
+        },
+        {
+          provide: ApiKeyGeneratorService,
+          useValue: { onboardAgent: jest.fn(), getKeyForAgent: jest.fn(), rotateKey: jest.fn() },
+        },
+        { provide: ConfigService, useValue: { get: jest.fn() } },
+        { provide: TenantCacheService, useValue: { resolve: jest.fn() } },
+        { provide: IngestEventBusService, useValue: { emit: jest.fn() } },
+        {
+          provide: AgentDuplicationService,
+          useValue: { duplicate: jest.fn(), getCopySummary: jest.fn(), suggestName: jest.fn() },
+        },
+        {
+          provide: AgentRecordingCacheService,
+          useValue: { isRecording: jest.fn(), invalidate: jest.fn() },
+        },
+      ],
+    }).compile();
+    const ctrl = module.get<AgentsController>(AgentsController);
+
+    const user = { id: 'u1' };
+    const result = await ctrl.updateAgent(user as never, 'bot-1', {
+      compress_prompt: true,
+      compress_response: true,
+    } as never);
+
+    expect(mockUpdateCompression).toHaveBeenCalledWith('u1', 'bot-1', {
+      compress_prompt: true,
+      compress_tool_output: undefined,
+      compress_response: true,
+    });
+    expect(result).toMatchObject({
+      compress_prompt: true,
+      compress_response: true,
+    });
   });
 
   it('invalidates agent list cache after successful createAgent', async () => {

@@ -10,6 +10,9 @@ export interface AgentInfo {
   agent_category: string | null;
   agent_platform: string | null;
   record_messages?: boolean;
+  compress_prompt?: boolean;
+  compress_tool_output?: boolean;
+  compress_response?: boolean;
 }
 
 export function getAgentInfo(agentName: string): Promise<AgentInfo | null> {
@@ -40,6 +43,9 @@ export function updateAgent(
     agent_category?: string;
     agent_platform?: string;
     record_messages?: boolean;
+    compress_prompt?: boolean;
+    compress_tool_output?: boolean;
+    compress_response?: boolean;
   },
 ) {
   return fetchMutate<Record<string, unknown>>(`/agents/${encodeURIComponent(currentName)}`, {

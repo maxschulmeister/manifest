@@ -88,7 +88,27 @@ describe('AgentLifecycleService', () => {
         agent_category: 'app',
         agent_platform: 'openai-sdk',
         record_messages: true,
+        compress_prompt: false,
+        compress_tool_output: false,
+        compress_response: false,
       });
+    });
+
+    it('defaults compression flags to false when entity has them unset', async () => {
+      mockAgentGetOne.mockResolvedValueOnce({
+        id: 'agent-id-1',
+        name: 'bot-1',
+        display_name: 'Bot One',
+        agent_category: null,
+        agent_platform: null,
+        compress_prompt: undefined,
+        compress_tool_output: undefined,
+        compress_response: undefined,
+      });
+      const result = await service.findAgentInfo('user-1', 'bot-1');
+      expect(result?.compress_prompt).toBe(false);
+      expect(result?.compress_tool_output).toBe(false);
+      expect(result?.compress_response).toBe(false);
     });
 
     it('defaults record_messages to false when entity has it unset', async () => {
@@ -403,6 +423,50 @@ describe('AgentLifecycleService', () => {
 
       expect(mockTransaction).toHaveBeenCalledTimes(1);
       expect(mockManagerQb.set).toHaveBeenCalledWith({ name: 'new-agent' });
+    });
+  });
+
+  describe('updateCompressionSettings', () => {
+    it('updates provided compression flags', async () => {
+      mockAgentGetOne.mockResolvedValueOnce({ id: 'agent-id-42', name: 'my-agent' });
+
+      const mockExecute = jest.fn().mockResolvedValue({});
+      const mockUpdateQb = {
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        execute: mockExecute,
+      };
+      mockAgentCreateQueryBuilder
+        .mockReturnValueOnce({
+          select: jest.fn().mockReturnThis(),
+          leftJoin: jest.fn().mockReturnThis(),
+          where: jest.fn().mockReturnThis(),
+          andWhere: jest.fn().mockReturnThis(),
+          orderBy: jest.fn().mockReturnThis(),
+          getOne: mockAgentGetOne,
+          getMany: jest.fn().mockResolvedValue([]),
+        })
+        .mockReturnValueOnce(mockUpdateQb);
+
+      const result = await service.updateCompressionSettings('test-user', 'my-agent', {
+        compress_prompt: true,
+        compress_tool_output: false,
+      });
+
+      expect(result).toEqual({ agentId: 'agent-id-42' });
+      expect(mockUpdateQb.set).toHaveBeenCalledWith({
+        compress_prompt: true,
+        compress_tool_output: false,
+      });
+    });
+
+    it('throws NotFoundException when agent is not found', async () => {
+      mockAgentGetOne.mockResolvedValueOnce(null);
+
+      await expect(
+        service.updateCompressionSettings('test-user', 'missing', { compress_prompt: true }),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 

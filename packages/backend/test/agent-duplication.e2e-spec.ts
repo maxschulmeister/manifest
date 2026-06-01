@@ -165,6 +165,30 @@ describe('Agent Duplication (e2e)', () => {
     expect(newSpec[0].category).toBe('coding');
   });
 
+  it('POST /agents/:name/duplicate copies compression settings from source', async () => {
+    await ds.getRepository(Agent).update(
+      { id: TEST_AGENT_ID },
+      {
+        compress_prompt: true,
+        compress_tool_output: true,
+        compress_response: false,
+      },
+    );
+
+    const res = await request(app.getHttpServer())
+      .post(`/api/v1/agents/${sourceAgent}/duplicate`)
+      .set(headers)
+      .send({ name: 'test-agent-compression-copy' })
+      .expect(201);
+
+    const newAgent = await ds.getRepository(Agent).findOne({
+      where: { id: res.body.agent.id },
+    });
+    expect(newAgent!.compress_prompt).toBe(true);
+    expect(newAgent!.compress_tool_output).toBe(true);
+    expect(newAgent!.compress_response).toBe(false);
+  });
+
   it('POST /agents/:name/duplicate remaps custom:<uuid> provider references', async () => {
     const now = new Date().toISOString();
     const srcAgentId = 'src-remap-agent';

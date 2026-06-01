@@ -83,6 +83,21 @@ describe('agents API client', () => {
     });
   });
 
+  it('updateAgent PATCHes compression settings', async () => {
+    const fetchMock = setupFetch({ ok: true });
+    await agents.updateAgent('demo', {
+      compress_prompt: true,
+      compress_tool_output: false,
+      compress_response: true,
+    });
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      compress_prompt: true,
+      compress_tool_output: false,
+      compress_response: true,
+    });
+  });
+
   it('renameAgent forwards to updateAgent with { name }', async () => {
     const fetchMock = setupFetch({ ok: true });
     await agents.renameAgent('old', 'new');
