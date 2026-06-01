@@ -282,8 +282,8 @@ export function getManifestCursorLiveRunForScope(
 export async function releaseManifestCursorLiveRun(run: ManifestCursorLiveRun): Promise<void> {
   if (run.disposed) return;
   run.disposed = true;
+  run.bridgeRun?.setOnToolRequest?.(undefined);
   run.bridgeRun?.cancel('Manifest live run released');
-  await run.bridgeRun?.dispose();
   if (run.sdkRun) await run.sdkRun.cancel().catch(() => undefined);
   pendingRunsByScope.delete(run.scopeKey);
 }

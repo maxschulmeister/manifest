@@ -233,10 +233,11 @@ describe('manifest-cursor-live-run', () => {
     expect(shiftManifestLiveEvent(run)?.type).toBe('text-delta');
   });
 
-  it('releases sdk run and bridge on release', async () => {
+  it('releases sdk run but keeps the session bridge reusable', async () => {
     const bridgeRun = {
       cancel: jest.fn(),
       dispose: jest.fn().mockResolvedValue(undefined),
+      setOnToolRequest: jest.fn(),
     } as unknown as ManifestToolBridgeRun;
     const sdkRun = {
       cancel: jest.fn().mockResolvedValue(undefined),
@@ -251,7 +252,9 @@ describe('manifest-cursor-live-run', () => {
     });
     attachManifestCursorLiveSdkRun(run, sdkRun);
     await releaseManifestCursorLiveRun(run);
+    expect(bridgeRun.setOnToolRequest).toHaveBeenCalledWith(undefined);
     expect(bridgeRun.cancel).toHaveBeenCalled();
+    expect(bridgeRun.dispose).not.toHaveBeenCalled();
     expect(sdkRun.cancel).toHaveBeenCalled();
     expect(manifestCursorLiveRuns.getForScope('scope-9')).toBeUndefined();
   });

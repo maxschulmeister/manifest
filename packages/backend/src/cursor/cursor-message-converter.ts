@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { isAbsolute } from 'node:path';
 import type { SDKImage, SDKUserMessage } from '@cursor/sdk';
 import type { OpenAIMessage } from '../routing/proxy/proxy-types';
 import { getManifestBridgeContractText } from './adapted/manifest-bridge-contract';
@@ -12,6 +13,7 @@ export interface CursorPrompt {
 
 export interface ManifestCursorContext {
   systemPrompt?: string;
+  workingDirectory?: string;
   messages: OpenAIMessage[];
 }
 
@@ -96,6 +98,13 @@ function getLatestUserMessageIndex(messages: OpenAIMessage[]): number {
   return -1;
 }
 
+function extractWorkingDirectory(systemPrompt: string | undefined): string | undefined {
+  if (!systemPrompt) return undefined;
+  const match = /^Current working directory:\s*(.+?)\s*$/m.exec(systemPrompt);
+  const cwd = match?.[1]?.trim();
+  return cwd && isAbsolute(cwd) ? cwd : undefined;
+}
+
 export function openAiMessagesToContext(body: Record<string, unknown>): ManifestCursorContext {
   const rawMessages = body.messages;
   const messages = Array.isArray(rawMessages) ? (rawMessages as OpenAIMessage[]) : [];
@@ -104,8 +113,11 @@ export function openAiMessagesToContext(body: Record<string, unknown>): Manifest
     .map((m) => messageText(m.content))
     .filter(Boolean);
   const nonSystem = messages.filter((m) => m.role !== 'system');
+  const systemPrompt = systemParts.length > 0 ? systemParts.join('\n') : undefined;
+  const workingDirectory = extractWorkingDirectory(systemPrompt);
   return {
-    systemPrompt: systemParts.length > 0 ? systemParts.join('\n') : undefined,
+    ...(systemPrompt ? { systemPrompt } : {}),
+    ...(workingDirectory ? { workingDirectory } : {}),
     messages: nonSystem,
   };
 }

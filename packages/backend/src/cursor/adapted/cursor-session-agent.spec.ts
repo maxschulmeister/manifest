@@ -2,7 +2,6 @@ import type { SDKAgent } from '@cursor/sdk';
 import {
   __testUtils,
   acquireSessionCursorAgent,
-  disposeAllSessionCursorAgents,
   resetSessionCursorAgent,
 } from './cursor-session-agent';
 import { disposeCursorTestState } from '../cursor-test-harness';
@@ -232,6 +231,96 @@ describe('cursor-session-agent', () => {
     const lease = await pending;
     expect(lease.agent).toBe(agent);
     expect(disposeSpy).toHaveBeenCalled();
+  });
+
+  it('uses cwd as both the Cursor workspace and local executor directory', async () => {
+    const agent = mockAgent();
+    const createAgent = jest.fn().mockResolvedValue(agent);
+
+    await acquireSessionCursorAgent('scope-cwd', {
+      apiKey: 'k',
+      cwd: '/tmp/manifest worktree/compression',
+      modelSelection: { id: 'm' },
+      agentMode: 'agent',
+      createAgent,
+    });
+
+    expect(createAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        local: expect.objectContaining({ cwd: '/tmp/manifest worktree/compression' }),
+        platform: expect.objectContaining({ workspaceRef: '/tmp/manifest worktree/compression' }),
+      }),
+    );
+  });
+
+  it('recreates the agent when a bridge appears on an existing bridge pool key', async () => {
+    const agent1 = mockAgent('without-bridge');
+    const agent2 = mockAgent('with-bridge');
+    const createAgent = jest.fn().mockResolvedValueOnce(agent1).mockResolvedValueOnce(agent2);
+    const bridgeRun = {
+      mcpServers: { manifest_tools: { url: 'http://127.0.0.1:1/bridge' } },
+      setOnToolRequest: jest.fn(),
+      cancel: jest.fn(),
+      dispose: jest.fn().mockResolvedValue(undefined),
+    };
+    const params = {
+      apiKey: 'k',
+      cwd: '/tmp',
+      modelSelection: { id: 'm' },
+      agentMode: 'agent' as const,
+      bridgeSurfaceSignature: 'bridge:same-tools',
+      createAgent,
+    };
+
+    await acquireSessionCursorAgent('scope-bridge-appears', params);
+    const lease = await acquireSessionCursorAgent('scope-bridge-appears', {
+      ...params,
+      bridgeRun: bridgeRun as never,
+    });
+
+    expect(createAgent).toHaveBeenCalledTimes(2);
+    expect(lease.agent).toBe(agent2);
+    expect(lease.bridgeRun).toBe(bridgeRun);
+  });
+
+  it('keeps the session bridge and disposes unused replacement bridges for identical pool keys', async () => {
+    const agent = mockAgent();
+    const createAgent = jest.fn().mockResolvedValue(agent);
+    const firstBridgeRun = {
+      mcpServers: { manifest_tools: { url: 'http://127.0.0.1:1/first' } },
+      setOnToolRequest: jest.fn(),
+      cancel: jest.fn(),
+      dispose: jest.fn().mockResolvedValue(undefined),
+    };
+    const secondBridgeRun = {
+      mcpServers: { manifest_tools: { url: 'http://127.0.0.1:1/second' } },
+      setOnToolRequest: jest.fn(),
+      cancel: jest.fn(),
+      dispose: jest.fn().mockResolvedValue(undefined),
+    };
+    const params = {
+      apiKey: 'k',
+      cwd: '/tmp',
+      modelSelection: { id: 'm' },
+      agentMode: 'agent' as const,
+      bridgeSurfaceSignature: 'bridge:same-tools',
+      createAgent,
+    };
+
+    const firstLease = await acquireSessionCursorAgent('scope-bridge-reuse', {
+      ...params,
+      bridgeRun: firstBridgeRun as never,
+    });
+    const secondLease = await acquireSessionCursorAgent('scope-bridge-reuse', {
+      ...params,
+      bridgeRun: secondBridgeRun as never,
+    });
+
+    expect(createAgent).toHaveBeenCalledTimes(1);
+    expect(firstLease.bridgeRun).toBe(firstBridgeRun);
+    expect(secondLease.bridgeRun).toBe(firstBridgeRun);
+    expect(secondBridgeRun.cancel).toHaveBeenCalledWith('Unused Cursor session bridge replaced');
+    expect(secondBridgeRun.dispose).toHaveBeenCalled();
   });
 
   it('wires bridge tool requests when creating an agent with a bridge run', async () => {

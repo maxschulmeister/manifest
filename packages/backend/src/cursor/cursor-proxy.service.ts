@@ -115,7 +115,7 @@ export class CursorProxyService implements OnModuleDestroy {
       const context = openAiMessagesToContext(strippedBody);
       const { manifestModelId } = parseCursorManifestModel(opts.model);
       const selection = buildCursorModelSelection(manifestModelId, routeParams);
-      const cwd = process.env.CURSOR_SDK_CWD ?? process.cwd();
+      const cwd = process.env.CURSOR_SDK_CWD?.trim() || context.workingDirectory || process.cwd();
 
       const bridgeSnapshot = buildManifestToolBridgeSnapshotFromOpenAiTools(strippedBody.tools);
       const bridgeSurfaceSignature = buildManifestToolBridgeSurfaceSignature(bridgeSnapshot);

@@ -21,6 +21,24 @@ describe('cursor-message-converter', () => {
     expect(prompt.text).toContain('User: Hello');
   });
 
+  it('extracts the current working directory from Pi system instructions', () => {
+    const context = openAiMessagesToContext({
+      messages: [
+        {
+          role: 'system',
+          content: [
+            'You are a coding agent.',
+            'Current date: 2026-06-01',
+            'Current working directory: /tmp/manifest worktree/compression',
+          ].join('\n'),
+        },
+        { role: 'user', content: 'Hi' },
+      ],
+    });
+
+    expect(context.workingDirectory).toBe('/tmp/manifest worktree/compression');
+  });
+
   it('builds incremental prompt from latest user message only', () => {
     const context = openAiMessagesToContext({
       messages: [

@@ -184,6 +184,51 @@ describe('CursorProxyService', () => {
     expect(mockReset).not.toHaveBeenCalled();
   });
 
+  it('uses current working directory from Pi system instructions for Cursor local agents', async () => {
+    const originalCwdOverride = process.env.CURSOR_SDK_CWD;
+    delete process.env.CURSOR_SDK_CWD;
+    const agent = {
+      agentId: 'agent-1',
+      model: { id: 'composer-2.5' },
+      send: jest.fn().mockReturnValue(mockRun('ok')),
+      close: jest.fn(),
+      reload: jest.fn().mockResolvedValue(undefined),
+      [Symbol.asyncDispose]: jest.fn().mockResolvedValue(undefined),
+      listArtifacts: jest.fn().mockResolvedValue([]),
+      downloadArtifact: jest.fn(),
+    } as unknown as SDKAgent;
+    mockAcquire.mockResolvedValue(mockLease(agent));
+
+    try {
+      const service = new CursorProxyService();
+      await service.forward({
+        provider: 'cursor',
+        apiKey: 'cursor-key',
+        model: 'cursor/composer-2.5',
+        body: {
+          messages: [
+            {
+              role: 'system',
+              content: 'Current working directory: /tmp/manifest worktree/compression',
+            },
+            { role: 'user', content: 'Hi' },
+          ],
+        },
+        stream: false,
+        agentId: 'agent-db-1',
+        sessionKey: 'conv-cwd',
+      });
+    } finally {
+      if (originalCwdOverride === undefined) delete process.env.CURSOR_SDK_CWD;
+      else process.env.CURSOR_SDK_CWD = originalCwdOverride;
+    }
+
+    expect(mockAcquire).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ cwd: '/tmp/manifest worktree/compression' }),
+    );
+  });
+
   it('uses X-Manifest-Conversation-Id from extraHeaders for session pooling', async () => {
     const agent = {
       agentId: 'agent-1',
@@ -348,6 +393,64 @@ describe('CursorProxyService', () => {
       choices: Array<{ message: { content: string } }>;
     };
     expect(json.choices[0].message.content).toBe('After tool execution');
+  });
+
+  it('returns the next bridge tool call after a previous tool result is resolved', async () => {
+    const scopeKey = buildCursorSessionPoolKey('agent-db-1', 'cursor-key', 'conv-resume-next');
+    let liveRun: ReturnType<typeof startManifestCursorLiveRun>;
+    const secondToolRequest: ManifestBridgeToolRequest = {
+      runId: 'bridge-run',
+      bridgeCallId: 'b2',
+      manifestToolCallId: 'call-resume-next-2',
+      agentToolName: 'bash',
+      mcpToolName: 'manifest__bash',
+      args: { command: 'pwd' },
+    };
+    const bridgeRun = {
+      hasPendingManifestToolCallId: (id: string) => id === 'call-resume-next-1',
+      hasPendingToolCalls: () => true,
+      resolveToolResults: jest.fn(() => {
+        queueManifestLiveEvent(liveRun, { type: 'bridge-tool', request: secondToolRequest });
+      }),
+      cancel: jest.fn(),
+      dispose: jest.fn().mockResolvedValue(undefined),
+    } as unknown as ManifestToolBridgeRun;
+    liveRun = startManifestCursorLiveRun({
+      id: 'live-resume-next',
+      scopeKey,
+      agent: { agentId: 'agent-1' } as unknown as SDKAgent,
+      bridgeRun,
+    });
+
+    const service = new CursorProxyService();
+    const result = await service.forward({
+      provider: 'cursor',
+      apiKey: 'cursor-key',
+      model: 'cursor/composer-2.5',
+      body: {
+        messages: [
+          { role: 'user', content: 'run' },
+          { role: 'tool', tool_call_id: 'call-resume-next-1', content: 'ok' },
+        ],
+        tools: [{ type: 'function', function: { name: 'bash', parameters: { type: 'object' } } }],
+      },
+      stream: false,
+      agentId: 'agent-db-1',
+      sessionKey: 'conv-resume-next',
+    });
+
+    expect(mockAcquire).not.toHaveBeenCalled();
+    const json = (await result.response.json()) as {
+      choices: Array<{
+        finish_reason: string;
+        message: { tool_calls: Array<{ id: string; function: { name: string } }> };
+      }>;
+    };
+    expect(json.choices[0].finish_reason).toBe('tool_calls');
+    expect(json.choices[0].message.tool_calls[0]).toMatchObject({
+      id: 'call-resume-next-2',
+      function: { name: 'bash' },
+    });
   });
 
   it('returns error when resumed live run failed after tool results', async () => {
@@ -922,6 +1025,169 @@ describe('CursorProxyService', () => {
     });
     __testUtils.handleSdkDeltaForTests(service, liveRun, { type: 'text-delta', text: 'chunk' });
     expect(liveRun.textDeltas).toEqual(['chunk']);
+  });
+
+  it('ignores Cursor SDK host tool events and keeps collecting assistant text', async () => {
+    const service = new CursorProxyService();
+    const agent = {
+      agentId: 'agent-1',
+      model: { id: 'composer-2.5' },
+      send: jest.fn(),
+      close: jest.fn(),
+      reload: jest.fn().mockResolvedValue(undefined),
+      [Symbol.asyncDispose]: jest.fn().mockResolvedValue(undefined),
+      listArtifacts: jest.fn().mockResolvedValue([]),
+      downloadArtifact: jest.fn(),
+    } as unknown as SDKAgent;
+    const liveRun = startManifestCursorLiveRun({ id: 'live-host-tool', scopeKey: 'scope', agent });
+    const run = {
+      id: 'run-host-tool',
+      agentId: 'agent-1',
+      stream: async function* () {
+        yield {
+          type: 'tool_call',
+          agent_id: 'agent-1',
+          run_id: 'run-host-tool',
+          call_id: 'host-tool-1',
+          name: 'grep',
+          status: 'running',
+          args: { pattern: 'compression' },
+        };
+        yield {
+          type: 'assistant',
+          agent_id: 'agent-1',
+          run_id: 'run-host-tool',
+          message: { role: 'assistant', content: [{ type: 'text', text: 'done' }] },
+        };
+      },
+      wait: jest
+        .fn()
+        .mockResolvedValue({ id: 'run-host-tool', status: 'finished', result: 'done' }),
+      cancel: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const result = await __testUtils.collectSdkRunWithBridgeForTests(
+      service,
+      liveRun,
+      run as never,
+    );
+
+    expect(result.text).toBe('done');
+    expect(run.cancel).not.toHaveBeenCalled();
+  });
+
+  it('allows Cursor SDK tool_call events that belong to the Manifest bridge', async () => {
+    const service = new CursorProxyService();
+    const agent = {
+      agentId: 'agent-1',
+      model: { id: 'composer-2.5' },
+      send: jest.fn(),
+      close: jest.fn(),
+      reload: jest.fn().mockResolvedValue(undefined),
+      [Symbol.asyncDispose]: jest.fn().mockResolvedValue(undefined),
+      listArtifacts: jest.fn().mockResolvedValue([]),
+      downloadArtifact: jest.fn(),
+    } as unknown as SDKAgent;
+    const bridgeRun = {
+      isBridgeMcpToolCall: jest.fn().mockReturnValue(true),
+      cancel: jest.fn(),
+      dispose: jest.fn().mockResolvedValue(undefined),
+    };
+    const liveRun = startManifestCursorLiveRun({
+      id: 'live-bridge-tool-event',
+      scopeKey: 'scope',
+      agent,
+      bridgeRun: bridgeRun as never,
+    });
+    const run = {
+      id: 'run-bridge-tool-event',
+      agentId: 'agent-1',
+      stream: async function* () {
+        yield {
+          type: 'tool_call',
+          agent_id: 'agent-1',
+          run_id: 'run-bridge-tool-event',
+          call_id: 'bridge-tool-1',
+          name: 'mcp',
+          status: 'running',
+          args: { name: 'manifest__bash' },
+        };
+        yield {
+          type: 'assistant',
+          agent_id: 'agent-1',
+          run_id: 'run-bridge-tool-event',
+          message: { role: 'assistant', content: [{ type: 'text', text: 'ok' }] },
+        };
+      },
+      wait: jest
+        .fn()
+        .mockResolvedValue({ id: 'run-bridge-tool-event', status: 'finished', result: 'ok' }),
+      cancel: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const result = await __testUtils.collectSdkRunWithBridgeForTests(
+      service,
+      liveRun,
+      run as never,
+    );
+
+    expect(result.text).toBe('ok');
+    expect(run.cancel).not.toHaveBeenCalled();
+  });
+
+  it('ignores Cursor SDK host tool events in streaming responses', async () => {
+    const service = new CursorProxyService();
+    const liveRun = startManifestCursorLiveRun({
+      id: 'live-stream-host-tool',
+      scopeKey: 'scope-stream-host-tool',
+      agent: { agentId: 'agent-1' } as unknown as SDKAgent,
+    });
+    const run = {
+      id: 'run-stream-host-tool',
+      agentId: 'agent-1',
+      stream: async function* () {
+        yield {
+          type: 'tool_call',
+          agent_id: 'agent-1',
+          run_id: 'run-stream-host-tool',
+          call_id: 'host-tool-1',
+          name: 'shell',
+          status: 'running',
+          args: { command: 'grep -R compression packages/backend/src' },
+        };
+        yield {
+          type: 'assistant',
+          agent_id: 'agent-1',
+          run_id: 'run-stream-host-tool',
+          message: { role: 'assistant', content: [{ type: 'text', text: 'streamed' }] },
+        };
+        markManifestLiveRunFinished(liveRun);
+      },
+      wait: jest.fn().mockResolvedValue({ id: 'run-stream-host-tool', status: 'finished' }),
+      cancel: jest.fn().mockResolvedValue(undefined),
+    } as unknown as Awaited<ReturnType<SDKAgent['send']>>;
+
+    const result = await __testUtils.streamLiveRunUntilDoneForTests(
+      service,
+      liveRun,
+      {
+        provider: 'cursor',
+        apiKey: 'cursor-key',
+        model: 'cursor/composer-2.5',
+        body: { messages: [{ role: 'user', content: 'Hi' }] },
+        stream: true,
+        agentId: 'a',
+        sessionKey: 's',
+      },
+      'cursor/composer-2.5',
+      'prompt',
+      run,
+    );
+
+    const text = await result.response.text();
+    expect(text).toContain('streamed');
+    expect(text).toContain('[DONE]');
+    expect(run.cancel).not.toHaveBeenCalled();
   });
 
   it('collectSdkRunWithBridge returns bridge requests from bridge poll ticks', async () => {

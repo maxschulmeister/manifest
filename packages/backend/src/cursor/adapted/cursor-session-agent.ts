@@ -98,13 +98,21 @@ function createInitialSendState(): SessionCursorAgentSendState {
   return { bootstrapped: false, contextFingerprint: '', incrementalSendCount: 0 };
 }
 
-async function disposeEntry(entry: ReadyEntry | BusyEntry): Promise<void> {
-  entry.bridgeRun?.cancel('Cursor session agent disposed');
+async function disposeBridgeRun(
+  bridgeRun: ManifestToolBridgeRun | undefined,
+  reason: string,
+): Promise<void> {
+  if (!bridgeRun) return;
+  bridgeRun.cancel(reason);
   try {
-    await entry.bridgeRun?.dispose();
+    await bridgeRun.dispose();
   } catch {
     // disposal failure should not block replacement
   }
+}
+
+async function disposeEntry(entry: ReadyEntry | BusyEntry): Promise<void> {
+  await disposeBridgeRun(entry.bridgeRun, 'Cursor session agent disposed');
   try {
     await entry.agent[Symbol.asyncDispose]();
   } catch {
@@ -208,6 +216,7 @@ async function createReadyEntry(
     model: params.modelSelection,
     mode: params.agentMode,
     local: { cwd: params.cwd, settingSources },
+    platform: { workspaceRef: params.cwd },
     ...(bridgeRun?.mcpServers ? { mcpServers: bridgeRun.mcpServers } : {}),
   });
 
@@ -240,6 +249,13 @@ export async function acquireSessionCursorAgent(
     }
 
     if (state?.status === 'ready' && state.poolKey === poolKey) {
+      if (params.bridgeRun && params.bridgeRun !== state.bridgeRun) {
+        if (!state.bridgeRun) {
+          await disposeScope(scopeKey);
+          continue;
+        }
+        await disposeBridgeRun(params.bridgeRun, 'Unused Cursor session bridge replaced');
+      }
       state.bridgeRun?.setOnToolRequest(params.onBridgeToolRequest);
       return leaseFromReady(state, scopeKey, false);
     }
