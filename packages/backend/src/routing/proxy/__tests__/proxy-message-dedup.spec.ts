@@ -372,6 +372,80 @@ describe('ProxyMessageDedup', () => {
       expect(result).toBeNull();
     });
 
+    it('should match by synthetic turn key without requiring identical token counts', async () => {
+      const existing = {
+        id: 'msg-turn-1',
+        timestamp: new Date().toISOString(),
+        input_tokens: 100,
+        output_tokens: 50,
+        cache_read_tokens: 0,
+        cache_creation_tokens: 0,
+        duration_ms: 500,
+      };
+      const repo = makeMockMessageRepo();
+      repo.findOne.mockResolvedValue(existing);
+
+      const result = await dedup.findExistingSuccessMessage(
+        repo as unknown as any,
+        testCtx,
+        'gpt-4o',
+        { prompt_tokens: 250, completion_tokens: 75 },
+        undefined,
+        null,
+        'turn-key-1',
+      );
+
+      expect(result).toBe(existing);
+      expect(repo.findOne).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ session_id: 'turn-key-1', status: 'ok' }),
+        }),
+      );
+      expect(repo.find).not.toHaveBeenCalled();
+    });
+
+    it('should match by synthetic turn key after a trace miss', async () => {
+      const existing = {
+        id: 'msg-turn-1',
+        timestamp: new Date().toISOString(),
+        input_tokens: 100,
+        output_tokens: 50,
+        cache_read_tokens: 0,
+        cache_creation_tokens: 0,
+        duration_ms: 500,
+      };
+      const repo = makeMockMessageRepo();
+      repo.findOne.mockResolvedValueOnce(null).mockResolvedValueOnce(existing);
+
+      const result = await dedup.findExistingSuccessMessage(
+        repo as unknown as any,
+        testCtx,
+        'gpt-4o',
+        { prompt_tokens: 250, completion_tokens: 75 },
+        'trace-that-differs-per-subcall',
+        'session-key-1',
+        'turn-key-1',
+      );
+
+      expect(result).toBe(existing);
+      expect(repo.findOne).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          where: expect.objectContaining({
+            trace_id: 'trace-that-differs-per-subcall',
+            status: 'ok',
+          }),
+        }),
+      );
+      expect(repo.findOne).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          where: expect.objectContaining({ session_id: 'turn-key-1', status: 'ok' }),
+        }),
+      );
+      expect(repo.find).not.toHaveBeenCalled();
+    });
+
     it('should include sessionKey in query when provided', async () => {
       const repo = makeMockMessageRepo();
       repo.find.mockResolvedValue([]);

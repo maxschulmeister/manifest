@@ -550,6 +550,7 @@ export function recordSuccess(
   callerAttribution?: CallerAttribution | null,
   requestHeaders?: Record<string, string> | null,
   recording?: { requestBody: Record<string, unknown>; capture: CaptureSink },
+  turnKey?: string,
 ): void {
   if (meta.fallbackFromModel && fallbackSuccessTs) {
     recordSafely(
@@ -608,6 +609,7 @@ export function recordSuccess(
         headerTierName: meta.header_tier_name,
         headerTierColor: meta.header_tier_color,
         recordingPayload,
+        turnKey,
       }),
       'success message',
     );
