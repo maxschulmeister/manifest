@@ -24,6 +24,7 @@ interface HeaderTierOption {
   id: string;
   name: string;
   route: { provider: string; authType: AuthType; model: string } | null;
+  fallback_routes: { provider: string; authType: AuthType; model: string }[] | null;
 }
 
 type PickerTab = AuthType | 'tiers';
@@ -364,6 +365,7 @@ const ModelPickerModal: Component<Props> = (props) => {
     >
       <div
         class="modal-card routing-modal__card"
+        data-active-tab={activeTab()}
         role="dialog"
         aria-modal="true"
         aria-labelledby="model-picker-title"
@@ -490,6 +492,23 @@ const ModelPickerModal: Component<Props> = (props) => {
                     setShowFreeOnly(false);
                   }}
                 >
+                  <svg
+                    class="provider-modal__tab-icon"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                    style="color: #8b5cf6"
+                  >
+                    <path d="M4 6h16" />
+                    <path d="M4 12h16" />
+                    <path d="M4 18h16" />
+                  </svg>
                   Tiers
                 </button>
               </Show>
@@ -565,22 +584,64 @@ const ModelPickerModal: Component<Props> = (props) => {
 
         <Show when={activeTab() === 'tiers'}>
           <div class="routing-modal__list">
+            <Show when={(props.headerTierOptions ?? []).length > 0}>
+              <div class="routing-modal__table-head" aria-hidden="true">
+                <span>Name</span>
+                <span>Provider</span>
+                <span>Models</span>
+              </div>
+            </Show>
             <For each={props.headerTierOptions ?? []}>
-              {(tier) => (
-                <button
-                  class="routing-modal__model"
-                  onClick={() => props.onSelectHeaderTier?.(props.tierId, tier.id)}
-                >
-                  <span class="routing-modal__model-left">
-                    <span class="routing-modal__model-label">{tier.name}</span>
-                  </span>
-                  <span class="routing-modal__model-cell">
-                    <span class="routing-modal__model-cell-label">Route</span>
-                    {tier.route?.model ?? 'No model'}
-                  </span>
-                </button>
-              )}
+              {(tier) => {
+                const routeProvider = tier.route?.provider;
+                const routeModel = tier.route?.model;
+                const provId = routeProvider
+                  ? (resolveProviderId(routeProvider) ??
+                    inferProviderFromModel(routeModel ?? '') ??
+                    routeProvider)
+                  : undefined;
+                const provDef = provId ? PROVIDERS.find((p) => p.id === provId) : undefined;
+                const providerName = provDef?.name ?? routeProvider ?? 'Unknown';
+                const allModels = () => {
+                  const labels: string[] = [];
+                  if (routeModel) {
+                    labels.push(labelForModel(routeModel, providerLabelMap()));
+                  }
+                  for (const fb of tier.fallback_routes ?? []) {
+                    if ('model' in fb && fb.model) {
+                      labels.push(labelForModel(fb.model, providerLabelMap()));
+                    }
+                  }
+                  return labels;
+                };
+                return (
+                  <button
+                    class="routing-modal__model routing-modal__model--tier"
+                    onClick={() => props.onSelectHeaderTier?.(props.tierId, tier.id)}
+                  >
+                    <span class="routing-modal__model-left">
+                      <span class="routing-modal__model-label">{tier.name}</span>
+                    </span>
+                    <span class="routing-modal__model-cell routing-modal__model-cell--tier-provider">
+                      <span class="routing-modal__model-cell-label">Provider</span>
+                      {provId ? providerIcon(provId, 14) : null}
+                      {providerName}
+                    </span>
+                    <span class="routing-modal__model-cell routing-modal__model-cell--tier-models">
+                      <span class="routing-modal__model-cell-label">Models</span>
+                      <span class="routing-modal__model-price">
+                        {allModels().length > 0 ? allModels().join(' → ') : 'No models'}
+                      </span>
+                    </span>
+                  </button>
+                );
+              }}
             </For>
+            <Show when={(props.headerTierOptions ?? []).length === 0}>
+              <div class="routing-modal__empty">
+                No custom tiers configured. Create a tier in the Custom tab first.
+              </div>
+            </Show>
           </div>
         </Show>
 

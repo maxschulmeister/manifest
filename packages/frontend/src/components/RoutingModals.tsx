@@ -285,7 +285,12 @@ const RoutingModals: Component<RoutingModalsProps> = (props) => {
               headerTierOptions={props
                 .headerTiers()
                 .filter((tier) => tier.enabled && tier.override_route)
-                .map((tier) => ({ id: tier.id, name: tier.name, route: tier.override_route }))}
+                .map((tier) => ({
+                  id: tier.id,
+                  name: tier.name,
+                  route: tier.override_route,
+                  fallback_routes: tier.fallback_routes,
+                }))}
               onSelect={handleFallbackSelect}
               onSelectHeaderTier={(tid, headerTierId) => {
                 props.onFallbackPickerClose();

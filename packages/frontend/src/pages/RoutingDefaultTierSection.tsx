@@ -67,6 +67,8 @@ export interface RoutingDefaultTierSectionProps {
     model: string,
     params: RequestParamDefaults | null,
   ) => Promise<unknown>;
+  /** Header tiers for resolving header_tier fallback refs. */
+  headerTiers?: () => import('../services/api/header-tiers.js').HeaderTier[];
 }
 
 const RoutingDefaultTierSection: Component<RoutingDefaultTierSectionProps> = (props) => {
@@ -100,6 +102,7 @@ const RoutingDefaultTierSection: Component<RoutingDefaultTierSectionProps> = (pr
         connectedProviders={props.connectedProviders}
         getModelParams={props.getModelParams}
         setModelParams={props.setModelParams}
+        headerTiers={props.headerTiers}
       />
     </div>
   );
@@ -130,6 +133,7 @@ const RoutingDefaultTierSection: Component<RoutingDefaultTierSectionProps> = (pr
             connectedProviders={props.connectedProviders}
             getModelParams={props.getModelParams}
             setModelParams={props.setModelParams}
+            headerTiers={props.headerTiers}
           />
         )}
       </For>

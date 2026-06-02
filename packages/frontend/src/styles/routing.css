@@ -1631,6 +1631,14 @@
   background: transparent;
 }
 
+.fallback-list__card--header-tier {
+  border-left: 3px solid #8b5cf6;
+}
+
+.fallback-list__card--header-tier .fallback-list__model {
+  font-weight: 600;
+}
+
 .fallback-list__card--skipped {
   opacity: 0.56;
   border-style: dashed;

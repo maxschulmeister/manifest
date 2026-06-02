@@ -188,6 +188,8 @@ export interface RoutingSpecificitySectionProps {
     model: string,
     params: RequestParamDefaults | null,
   ) => Promise<unknown>;
+  /** Header tiers for resolving header_tier fallback refs. */
+  headerTiers?: () => import('../services/api/header-tiers.js').HeaderTier[];
 }
 
 function toTierAssignment(a: SpecificityAssignment | undefined): TierAssignment | undefined {
@@ -293,6 +295,7 @@ const RoutingSpecificitySection: Component<RoutingSpecificitySectionProps> = (pr
                 }
                 getModelParams={props.getModelParams}
                 setModelParams={props.setModelParams}
+                headerTiers={props.headerTiers}
               />
             )}
           </For>
