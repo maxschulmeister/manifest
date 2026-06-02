@@ -25,6 +25,7 @@ import type {
   RoutingProvider,
   CustomProviderData,
 } from '../services/api.js';
+import type { HeaderTier } from '../services/api/header-tiers.js';
 
 export interface RoutingTierCardProps {
   stage: StageDef;
@@ -90,6 +91,8 @@ export interface RoutingTierCardProps {
     model: string,
     params: RequestParamDefaults | null,
   ) => Promise<unknown>;
+  /** Header tiers for resolving header_tier fallback refs. */
+  headerTiers?: () => HeaderTier[];
 }
 
 const effectiveRoute = (
@@ -252,6 +255,7 @@ const RoutingTierCard: Component<RoutingTierCardProps> = (props) => {
           setModelParams={props.setModelParams}
           tierData={props.tier}
           showSwappingSkeleton={() => props.changingTier() === props.stage.id}
+          headerTiers={props.headerTiers?.()}
           renderPrimaryExtension={() => (
             <Show when={!isManual()}>
               <span class="routing-card__auto-tag">auto</span>

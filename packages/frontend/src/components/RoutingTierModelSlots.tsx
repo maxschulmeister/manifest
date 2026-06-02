@@ -10,6 +10,7 @@ import type {
   RoutingProvider,
   TierAssignment,
 } from '../services/api.js';
+import type { HeaderTier } from '../services/api/header-tiers.js';
 import { formatPerRequestCost } from '../services/formatters.js';
 import { providerIdForModel } from '../services/routing-model-utils.js';
 import { pricePerM } from '../services/routing-utils.js';
@@ -67,6 +68,8 @@ export interface RoutingTierModelSlotsProps {
   renderPrimaryExtension?: (model: string) => JSX.Element;
   renderPrimaryActions: (model: string) => JSX.Element;
   onPrimaryChipClick?: (model: string) => void;
+  /** Header tiers for resolving header_tier fallback refs in FallbackList. */
+  headerTiers?: HeaderTier[];
 }
 
 const RoutingTierModelSlots: Component<RoutingTierModelSlotsProps> = (props) => {
@@ -217,6 +220,7 @@ const RoutingTierModelSlots: Component<RoutingTierModelSlotsProps> = (props) => 
             swappingIndex={dragDrop.swappingFbIndex()}
             modelParamsScope={props.modelParamsScope}
             responseMode={props.responseMode()}
+            headerTiers={props.headerTiers}
           />
         </div>
       </Show>
