@@ -19,6 +19,7 @@ import type {
   TierAssignment,
   AvailableModel,
   AuthType,
+  FallbackRouteTarget,
   ModelRoute,
   RequestParamDefaults,
   RoutingProvider,
@@ -55,7 +56,7 @@ export interface RoutingTierCardProps {
   onFallbackUpdate: (
     tierId: string,
     fallbacks: string[],
-    fallbackRoutes?: ModelRoute[] | null,
+    fallbackRoutes?: FallbackRouteTarget[] | null,
   ) => void;
   onAddFallback: (tierId: string) => void;
   getFallbacksFor: (tierId: string) => string[];
@@ -64,7 +65,7 @@ export interface RoutingTierCardProps {
     agentName: string,
     tier: string,
     models: string[],
-    routes?: ModelRoute[],
+    routes?: FallbackRouteTarget[],
   ) => Promise<unknown>;
   persistClearFallbacks?: (agentName: string, tier: string) => Promise<unknown>;
   /**

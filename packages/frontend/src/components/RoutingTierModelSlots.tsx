@@ -3,6 +3,7 @@ import type {
   AuthType,
   AvailableModel,
   CustomProviderData,
+  FallbackRouteTarget,
   ModelRoute,
   RequestParamDefaults,
   ResponseMode,
@@ -25,13 +26,13 @@ export interface RoutingTierModelSlotsProps {
   primaryModel: Accessor<string | null>;
   primaryRoute: Accessor<ModelRoute | null>;
   fallbacks: Accessor<string[]>;
-  fallbackRoutes: Accessor<ModelRoute[] | null>;
+  fallbackRoutes: Accessor<FallbackRouteTarget[] | null>;
   responseMode: Accessor<ResponseMode>;
   providerIdForPrimary: Accessor<string | undefined>;
   effectiveAuthForPrimary: Accessor<AuthType | null>;
   primaryLabel: (model: string) => string;
   primarySkipped: Accessor<boolean>;
-  onFallbackUpdate: (fallbacks: string[], routes?: ModelRoute[] | null) => void;
+  onFallbackUpdate: (fallbacks: string[], routes?: FallbackRouteTarget[] | null) => void;
   onPrimaryOverride: (
     model: string,
     provider: string,
@@ -42,7 +43,7 @@ export interface RoutingTierModelSlotsProps {
     agentName: string,
     tier: string,
     models: string[],
-    routes?: ModelRoute[],
+    routes?: FallbackRouteTarget[],
   ) => Promise<unknown>;
   persistClearFallbacks?: (agentName: string, tier: string) => Promise<unknown>;
   onAddFallback: () => void;

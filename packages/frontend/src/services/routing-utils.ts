@@ -1,11 +1,11 @@
 import { PROVIDERS } from './providers.js';
 import { inferProviderFromModel, SHARED_PROVIDERS } from 'manifest-shared';
-import type { AuthType, ModelRoute, RoutingProvider } from './api.js';
+import type { AuthType, FallbackRouteTarget, ModelRoute, RoutingProvider } from './api.js';
 
 export interface RouteSlots {
   override_route?: ModelRoute | null;
   auto_assigned_route?: ModelRoute | null;
-  fallback_routes?: ModelRoute[] | null;
+  fallback_routes?: FallbackRouteTarget[] | null;
 }
 
 /**
@@ -41,7 +41,7 @@ export function usedKeyLabelsForModelInTier(
   for (let i = 0; i < routes.length; i++) {
     if (excludeSlot === i) continue;
     const r = routes[i];
-    if (!r) continue;
+    if (!r || 'kind' in r) continue;
     if (r.model === modelName) {
       const label = r.keyLabel ?? defaultKeyLabel;
       if (label) used.add(label.toLowerCase());

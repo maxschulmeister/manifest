@@ -1,5 +1,15 @@
 import { fetchJson, fetchMutate, routingPath } from './core.js';
-import type { AuthType, ModelRoute, ResponseMode, OutputModality } from './routing.js';
+import type {
+  AuthType,
+  FallbackRouteTarget,
+  ModelRoute,
+  ResponseMode,
+  OutputModality,
+} from './routing.js';
+
+function isModelRouteTarget(route: FallbackRouteTarget): route is ModelRoute {
+  return !('kind' in route) || route.kind !== 'header_tier';
+}
 
 export interface SpecificityAssignment {
   id: string;
@@ -8,7 +18,7 @@ export interface SpecificityAssignment {
   is_active: boolean;
   override_route: ModelRoute | null;
   auto_assigned_route: ModelRoute | null;
-  fallback_routes: ModelRoute[] | null;
+  fallback_routes: FallbackRouteTarget[] | null;
   output_modality?: OutputModality;
   response_mode?: ResponseMode;
   updated_at: string;
@@ -81,11 +91,12 @@ export function setSpecificityFallbacks(
   agentName: string,
   category: string,
   models: string[],
-  routes?: ModelRoute[],
+  routes?: FallbackRouteTarget[],
 ) {
   const body: Record<string, unknown> = { models };
-  if (routes && routes.length === models.length) body.routes = routes;
-  return fetchMutate<string[]>(
+  if (routes && routes.length === models.length) body.routes = routes.filter(isModelRouteTarget);
+  if (routes?.some((route) => route.kind === 'header_tier')) body.targets = routes;
+  return fetchMutate<FallbackRouteTarget[]>(
     routingPath(agentName, `specificity/${encodeURIComponent(category)}/fallbacks`),
     {
       method: 'PUT',

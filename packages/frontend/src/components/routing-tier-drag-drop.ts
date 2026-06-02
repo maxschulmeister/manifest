@@ -1,5 +1,5 @@
 import { createSignal } from 'solid-js';
-import type { AuthType, ModelRoute } from '../services/api.js';
+import type { AuthType, FallbackRouteTarget, ModelRoute } from '../services/api.js';
 import { toast } from '../services/toast-store.js';
 
 export interface RoutingTierDragDropConfig {
@@ -8,8 +8,8 @@ export interface RoutingTierDragDropConfig {
   getPrimaryModel: () => string | null;
   getPrimaryRoute: () => ModelRoute | null;
   getFallbacks: () => string[];
-  getFallbackRoutes: () => ModelRoute[] | null;
-  onFallbackUpdate: (fallbacks: string[], routes: ModelRoute[] | null) => void;
+  getFallbackRoutes: () => FallbackRouteTarget[] | null;
+  onFallbackUpdate: (fallbacks: string[], routes: FallbackRouteTarget[] | null) => void;
   onPrimaryOverride: (
     model: string,
     provider: string,
@@ -20,7 +20,7 @@ export interface RoutingTierDragDropConfig {
     agentName: string,
     tier: string,
     models: string[],
-    routes?: ModelRoute[],
+    routes?: FallbackRouteTarget[],
   ) => Promise<unknown>;
   resolveProviderForModel: (model: string) => string | undefined;
 }
@@ -69,6 +69,10 @@ export function createRoutingTierDragDrop(config: RoutingTierDragDropConfig) {
     }
     const fallbackRoutes = config.getFallbackRoutes();
     const fbRoute = fallbackRoutes?.[fbIndex] ?? null;
+    if (fbRoute && 'kind' in fbRoute) {
+      setSwappingFbIndex(null);
+      return;
+    }
     const newFallbacks = [...fallbacks];
     newFallbacks[fbIndex] = currentModel;
     const newRoutes =
@@ -125,7 +129,7 @@ export function createRoutingTierDragDrop(config: RoutingTierDragDropConfig) {
       setSwappingFbIndex(null);
       return;
     }
-    const buildRoutes = (): ModelRoute[] | null => {
+    const buildRoutes = (): FallbackRouteTarget[] | null => {
       if (!currentRoute || !fallbackRoutes || fallbackRoutes.length !== fallbacks.length) {
         return null;
       }
@@ -136,7 +140,9 @@ export function createRoutingTierDragDrop(config: RoutingTierDragDropConfig) {
     };
     const newRoutes = buildRoutes();
     const newPrimaryRoute =
-      newRoutes && newRoutes.length === newFallbacks.length ? fallbackRoutes![0] : null;
+      newRoutes && newRoutes.length === newFallbacks.length && !('kind' in fallbackRoutes![0]!)
+        ? fallbackRoutes![0]
+        : null;
     config.onFallbackUpdate(newFallbacks, newRoutes);
     try {
       await config.persistFallbacks(

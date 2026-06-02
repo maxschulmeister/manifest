@@ -13,6 +13,7 @@ import {
   isManifestUsableProvider,
   isSupportedSubscriptionProvider,
 } from '../../common/utils/subscription-support';
+import { isModelRoute } from 'manifest-shared';
 import type { AuthType, ModelRoute } from 'manifest-shared';
 import { TIER_LABELS } from 'manifest-shared';
 import { detectQwenRegion, isQwenRegion, isQwenResolvedRegion } from '../qwen-region';
@@ -657,7 +658,9 @@ export class ProviderService {
         mutated = true;
       }
       if (tier.fallback_routes && tier.fallback_routes.length > 0) {
-        const filteredRoutes = tier.fallback_routes.filter((route) => !routeBelongs(route));
+        const filteredRoutes = tier.fallback_routes.filter(
+          (route) => !isModelRoute(route) || !routeBelongs(route),
+        );
         if (filteredRoutes.length !== tier.fallback_routes.length) {
           tier.fallback_routes = filteredRoutes.length > 0 ? filteredRoutes : null;
           mutated = true;
@@ -680,7 +683,9 @@ export class ProviderService {
         changed = true;
       }
       if (row.fallback_routes && row.fallback_routes.length > 0) {
-        const filteredRoutes = row.fallback_routes.filter((route) => !routeBelongs(route));
+        const filteredRoutes = row.fallback_routes.filter(
+          (route) => !isModelRoute(route) || !routeBelongs(route),
+        );
         if (filteredRoutes.length !== row.fallback_routes.length) {
           row.fallback_routes = filteredRoutes.length > 0 ? filteredRoutes : null;
           changed = true;
@@ -737,9 +742,12 @@ export class ProviderService {
         t.override_route = replaceKeyLabel(t.override_route!);
         mutated = true;
       }
-      if (t.fallback_routes && t.fallback_routes.some(routeMatchesKey)) {
+      if (
+        t.fallback_routes &&
+        t.fallback_routes.some((r) => isModelRoute(r) && routeMatchesKey(r))
+      ) {
         t.fallback_routes = t.fallback_routes.map((r) =>
-          routeMatchesKey(r) ? replaceKeyLabel(r) : r,
+          isModelRoute(r) && routeMatchesKey(r) ? replaceKeyLabel(r) : r,
         );
         mutated = true;
       }
@@ -762,9 +770,12 @@ export class ProviderService {
         s.override_route = replaceKeyLabel(s.override_route!);
         mutated = true;
       }
-      if (s.fallback_routes && s.fallback_routes.some(routeMatchesKey)) {
+      if (
+        s.fallback_routes &&
+        s.fallback_routes.some((r) => isModelRoute(r) && routeMatchesKey(r))
+      ) {
         s.fallback_routes = s.fallback_routes.map((r) =>
-          routeMatchesKey(r) ? replaceKeyLabel(r) : r,
+          isModelRoute(r) && routeMatchesKey(r) ? replaceKeyLabel(r) : r,
         );
         mutated = true;
       }

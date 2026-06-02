@@ -2,6 +2,8 @@ import {
   ModelRoute,
   isModelRoute,
   isModelRouteArray,
+  isHeaderTierFallbackRef,
+  isFallbackRouteTargetArray,
   legacyToRoute,
   routeEquals,
   routeToLegacy,
@@ -164,6 +166,33 @@ describe('isModelRouteArray', () => {
     expect(isModelRouteArray([valid, { provider: 'openai' }])).toBe(false);
     expect(isModelRouteArray([valid, null])).toBe(false);
     expect(isModelRouteArray([valid, 'gpt-4o'])).toBe(false);
+  });
+});
+
+describe('isHeaderTierFallbackRef', () => {
+  it('returns true for a valid header-tier fallback reference', () => {
+    expect(isHeaderTierFallbackRef({ kind: 'header_tier', id: 'fast-tier' })).toBe(true);
+  });
+
+  it('rejects malformed header-tier fallback references', () => {
+    expect(isHeaderTierFallbackRef({ kind: 'header_tier', id: '' })).toBe(false);
+    expect(isHeaderTierFallbackRef({ kind: 'other', id: 'fast-tier' })).toBe(false);
+    expect(isHeaderTierFallbackRef({ kind: 'header_tier' })).toBe(false);
+  });
+});
+
+describe('isFallbackRouteTargetArray', () => {
+  it('accepts mixed model routes and header-tier refs', () => {
+    expect(
+      isFallbackRouteTargetArray([
+        { provider: 'openai', authType: 'api_key', model: 'gpt-4o' },
+        { kind: 'header_tier', id: 'fast-tier' },
+      ]),
+    ).toBe(true);
+  });
+
+  it('rejects invalid entries', () => {
+    expect(isFallbackRouteTargetArray([{ kind: 'header_tier', id: '' }])).toBe(false);
   });
 });
 

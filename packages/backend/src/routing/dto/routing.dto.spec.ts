@@ -207,6 +207,18 @@ describe('SetFallbacksDto', () => {
     const errors = await validate(dto);
     expect(errors.length).toBeGreaterThan(0);
   });
+
+  it('accepts mixed fallback targets', async () => {
+    const dto = toFallbacksDto({
+      models: ['gpt-4o', 'fast-tier'],
+      targets: [
+        { provider: 'openai', authType: 'api_key', model: 'gpt-4o' },
+        { kind: 'header_tier', id: 'fast-tier' },
+      ],
+    });
+    const errors = await validate(dto);
+    expect(errors).toHaveLength(0);
+  });
 });
 
 describe('SetResponseModeDto', () => {

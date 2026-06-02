@@ -12,6 +12,7 @@ import type {
   TierAssignment,
   AvailableModel,
   AuthType,
+  FallbackRouteTarget,
   ModelRoute,
   RequestParamDefaults,
   ResponseMode,
@@ -156,7 +157,11 @@ export interface RoutingSpecificitySectionProps {
     authType?: AuthType,
   ) => void;
   onReset: (category: string) => void;
-  onFallbackUpdate: (category: string, fallbacks: string[], routes?: ModelRoute[] | null) => void;
+  onFallbackUpdate: (
+    category: string,
+    fallbacks: string[],
+    routes?: FallbackRouteTarget[] | null,
+  ) => void;
   onAddFallback: (category: string) => void;
   responseMode: () => ResponseMode;
   changingResponseMode: () => boolean;

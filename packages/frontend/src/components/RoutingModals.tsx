@@ -14,6 +14,7 @@ import type {
   ModelCapability,
   ResponseMode,
 } from '../services/api.js';
+import type { HeaderTier } from '../services/api/header-tiers.js';
 import {
   activeRouteKeys,
   availableRouteKeysForModel,
@@ -44,6 +45,7 @@ interface RoutingModalsProps {
   specificityAssignments?: () => SpecificityAssignment[];
   customProviders: () => CustomProviderData[];
   connectedProviders: () => RoutingProvider[];
+  headerTiers: () => HeaderTier[];
   getTier: (tierId: string) => TierAssignment | undefined;
   onOverride: (
     tierId: string,
@@ -59,6 +61,7 @@ interface RoutingModalsProps {
     authType?: AuthType,
     providerKeyLabel?: string,
   ) => void;
+  onAddHeaderTierFallback: (tierId: string, headerTierId: string) => void;
   onProviderUpdate: () => Promise<void>;
 }
 
@@ -209,6 +212,7 @@ const RoutingModals: Component<RoutingModalsProps> = (props) => {
                 const routes = tier?.fallback_routes ?? [];
                 return !routes.some(
                   (r) =>
+                    !('kind' in r) &&
                     r.model === m.model_name &&
                     r.provider.toLowerCase() === providerId.toLowerCase() &&
                     r.authType === authType,
@@ -278,7 +282,15 @@ const RoutingModals: Component<RoutingModalsProps> = (props) => {
               customProviders={props.customProviders()}
               connectedProviders={props.connectedProviders()}
               requiredCapability={requiredCapabilityForTier(tierId())}
+              headerTierOptions={props
+                .headerTiers()
+                .filter((tier) => tier.enabled && tier.override_route)
+                .map((tier) => ({ id: tier.id, name: tier.name, route: tier.override_route }))}
               onSelect={handleFallbackSelect}
+              onSelectHeaderTier={(tid, headerTierId) => {
+                props.onFallbackPickerClose();
+                props.onAddHeaderTierFallback(tid, headerTierId);
+              }}
               onClose={props.onFallbackPickerClose}
               onConnectProviders={() => {
                 props.onFallbackPickerClose();
