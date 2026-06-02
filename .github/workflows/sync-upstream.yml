@@ -35,12 +35,12 @@ jobs:
 
       - name: Mirror main exactly from upstream
         run: |
-          git checkout main
+          git checkout -B main origin/main
           git reset --hard source/main
           git push --force-with-lease origin main
 
       - name: Merge upstream main into staging
         run: |
-          git checkout staging
+          git checkout -B staging origin/staging
           git merge source/main --no-edit
           git push origin staging
