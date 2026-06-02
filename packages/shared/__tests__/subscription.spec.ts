@@ -216,7 +216,8 @@ describe('getSubscriptionKnownModels', () => {
 
   it('returns known models for copilot', () => {
     const models = getSubscriptionKnownModels('copilot');
-    expect(models).toContain('copilot/claude-opus-4.6');
+    expect(models).toContain('copilot/claude-opus-4.7');
+    expect(models).toContain('copilot/claude-opus-4.8');
     expect(models).toContain('copilot/gpt-5.4');
   });
 
