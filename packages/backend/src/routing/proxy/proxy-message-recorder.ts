@@ -99,7 +99,6 @@ export interface SuccessMessageOpts extends HeaderTierRef {
   requestHeaders?: Record<string, string> | null;
   requestParams?: RequestParamDefaults | null;
   recordingPayload?: SuccessRecordingPayload;
-  turnKey?: string | null;
 }
 
 /**
@@ -484,7 +483,6 @@ export class ProxyMessageRecorder implements OnModuleDestroy {
       headerTierName,
       headerTierColor,
       recordingPayload,
-      turnKey,
     } = opts ?? {};
     const recorded = !!recordingPayload;
 
@@ -524,13 +522,7 @@ export class ProxyMessageRecorder implements OnModuleDestroy {
     let wrote = false;
     let writtenMessageId: string | null = null;
     await this.dedup.withSuccessWriteLock(
-      this.dedup.getSuccessWriteLockKey(
-        ctx,
-        canonicalModel,
-        traceId,
-        normalizedSessionKey,
-        turnKey,
-      ),
+      this.dedup.getSuccessWriteLockKey(ctx, canonicalModel, traceId, normalizedSessionKey),
       async () => {
         await this.dedup.withAgentMessageTransaction(this.messageRepo, ctx, async (messageRepo) => {
           const existing = await this.dedup.findExistingSuccessMessage(
@@ -540,7 +532,6 @@ export class ProxyMessageRecorder implements OnModuleDestroy {
             usage,
             traceId,
             normalizedSessionKey,
-            turnKey,
           );
 
           if (existing) {
@@ -576,7 +567,6 @@ export class ProxyMessageRecorder implements OnModuleDestroy {
               recorded,
             };
             if (normalizedSessionKey) updatePayload.session_key = normalizedSessionKey;
-            if (turnKey) updatePayload.session_id = turnKey;
 
             await messageRepo.update({ id: existing.id }, updatePayload);
             wrote = true;
@@ -590,7 +580,6 @@ export class ProxyMessageRecorder implements OnModuleDestroy {
               id: newId,
               trace_id: traceId ?? null,
               session_key: normalizedSessionKey,
-              session_id: turnKey ?? null,
               timestamp: new Date().toISOString(),
               status,
               error_message: errorMessage,

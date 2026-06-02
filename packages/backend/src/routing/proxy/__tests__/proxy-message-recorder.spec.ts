@@ -790,32 +790,6 @@ describe('ProxyMessageRecorder', () => {
       expect(emitMock).not.toHaveBeenCalled();
     });
 
-    it('passes turnKey to dedup and stores it as session_id on insert', async () => {
-      const usage = { prompt_tokens: 50, completion_tokens: 25 };
-
-      await recorder.recordSuccessMessage(ctx, 'gpt-4o', 'standard', 'model_alias', usage, {
-        turnKey: 'turn-key-1',
-      });
-
-      expect(dedupWithLock.getSuccessWriteLockKey).toHaveBeenCalledWith(
-        ctx,
-        'gpt-4o',
-        undefined,
-        undefined,
-        'turn-key-1',
-      );
-      expect(dedupWithLock.findExistingSuccessMessage).toHaveBeenCalledWith(
-        expect.anything(),
-        ctx,
-        'gpt-4o',
-        usage,
-        undefined,
-        undefined,
-        'turn-key-1',
-      );
-      expect(insertMock.mock.calls[0][0]).toMatchObject({ session_id: 'turn-key-1' });
-    });
-
     it('includes session_key in update payload when normalizeSessionKey returns a value', async () => {
       const updateMock = jest.fn();
       (dedupWithLock.normalizeSessionKey as jest.Mock).mockReturnValue('session-abc');

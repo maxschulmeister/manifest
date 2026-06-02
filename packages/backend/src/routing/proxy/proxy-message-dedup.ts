@@ -29,7 +29,6 @@ export class ProxyMessageDedup {
     usage: StreamUsage,
     traceId?: string,
     sessionKey?: string | null,
-    turnKey?: string | null,
   ): Promise<DedupMatch | null> {
     if (traceId) {
       const existing = await messageRepo.findOne({
@@ -54,30 +53,6 @@ export class ProxyMessageDedup {
     }
 
     const now = Date.now();
-
-    if (turnKey) {
-      const existing = await messageRepo.findOne({
-        where: {
-          tenant_id: ctx.tenantId,
-          agent_id: ctx.agentId,
-          user_id: ctx.userId,
-          session_id: turnKey,
-          status: 'ok',
-        },
-        select: [
-          'id',
-          'timestamp',
-          'input_tokens',
-          'output_tokens',
-          'cache_read_tokens',
-          'cache_creation_tokens',
-          'duration_ms',
-        ],
-        order: { timestamp: 'DESC' },
-      });
-      if (existing && this.isWithinRecentWindow(existing.timestamp, now)) return existing;
-    }
-
     const recentByModel = await messageRepo.find({
       where: {
         tenant_id: ctx.tenantId,
@@ -104,7 +79,11 @@ export class ProxyMessageDedup {
       recentByModel.find((row) => {
         const rowTime = new Date(row.timestamp).getTime();
         const durationMs = row.duration_ms ?? null;
-        if (durationMs == null || !this.isWithinRecentWindow(row.timestamp, now)) {
+        if (
+          Number.isNaN(rowTime) ||
+          durationMs == null ||
+          now - rowTime > SUCCESS_SESSION_DEDUP_WINDOW_MS
+        ) {
           return false;
         }
         // agent_messages.input_tokens already stores the chat-shape prompt_tokens
@@ -131,10 +110,8 @@ export class ProxyMessageDedup {
     model: string,
     traceId?: string,
     sessionKey?: string | null,
-    turnKey?: string | null,
   ): string {
     if (traceId) return `trace:${ctx.tenantId}:${ctx.agentId}:${traceId}`;
-    if (turnKey) return `turn:${ctx.tenantId}:${ctx.agentId}:${ctx.userId}:${turnKey}`;
     return `success:${ctx.tenantId}:${ctx.agentId}:${ctx.userId}:${sessionKey ?? 'no-session'}:${model}`;
   }
 
@@ -167,11 +144,6 @@ export class ProxyMessageDedup {
       await this.lockAgentMessageWrites(manager, ctx.agentId);
       return fn(manager.getRepository(AgentMessage));
     });
-  }
-
-  private isWithinRecentWindow(timestamp: string, now: number): boolean {
-    const rowTime = new Date(timestamp).getTime();
-    return !Number.isNaN(rowTime) && now - rowTime <= SUCCESS_SESSION_DEDUP_WINDOW_MS;
   }
 
   private async lockAgentMessageWrites(manager: EntityManager, agentId: string): Promise<void> {

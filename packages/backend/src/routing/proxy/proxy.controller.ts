@@ -35,7 +35,6 @@ import {
 } from './proxy-response-handler';
 import { ProxyExceptionFilter, isChatRenderingClient } from './proxy-exception.filter';
 import { sendFriendlyResponse } from './proxy-friendly-response';
-import { buildSyntheticTurnKey } from './proxy-turn-key';
 import { formatManifestError } from '../../common/errors/error-codes';
 import { parseModelAliasFromBody } from '../model-alias-validation';
 import { HeaderTierService } from '../header-tiers/header-tier.service';
@@ -226,10 +225,6 @@ export class ProxyController {
         );
       }
 
-      const syntheticTurnKey = meta.header_tier_id
-        ? buildSyntheticTurnKey(body, sessionKey, meta.header_tier_id)
-        : undefined;
-
       recordSuccess(
         req.ingestionContext,
         meta,
@@ -242,7 +237,6 @@ export class ProxyController {
         callerAttribution,
         requestHeaders,
         capture ? { capture, requestBody: body } : undefined,
-        syntheticTurnKey,
       );
     } catch (err: unknown) {
       this.handleProxyError(

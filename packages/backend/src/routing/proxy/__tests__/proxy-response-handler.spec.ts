@@ -1698,36 +1698,6 @@ describe('proxy-response-handler', () => {
       );
     });
 
-    it('passes turnKey to success recording when supplied', () => {
-      const recorder = mockRecorder();
-      const meta = makeMeta({ reason: 'model_alias' });
-      const usage: StreamUsage = { prompt_tokens: 100, completion_tokens: 50 };
-
-      recordSuccess(
-        testCtx,
-        meta,
-        usage,
-        undefined,
-        recorder as any,
-        undefined,
-        'session-1',
-        1000,
-        null,
-        null,
-        undefined,
-        'turn-key-1',
-      );
-
-      expect(recorder.recordSuccessMessage).toHaveBeenCalledWith(
-        testCtx,
-        'gpt-4o',
-        'standard',
-        'model_alias',
-        usage,
-        expect.objectContaining({ turnKey: 'turn-key-1' }),
-      );
-    });
-
     it('should record with zero-value usage when no fallback and no usage data', () => {
       const recorder = mockRecorder();
       const meta = makeMeta();
