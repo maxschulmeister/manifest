@@ -126,17 +126,20 @@ const PROVIDER_UI: Record<string, ProviderUIOverlay> = {
     deviceLogin: true,
     subscriptionOnly: true,
     models: [
-      { label: 'Claude Opus 4.6', value: 'copilot/claude-opus-4.6' },
+      { label: 'Claude Opus 4.7', value: 'copilot/claude-opus-4.7' },
+      { label: 'Claude Opus 4.8', value: 'copilot/claude-opus-4.8' },
       { label: 'Claude Sonnet 4.6', value: 'copilot/claude-sonnet-4.6' },
       { label: 'Claude Haiku 4.5', value: 'copilot/claude-haiku-4.5' },
-      { label: 'GPT-5.4', value: 'copilot/gpt-5.4' },
+      { label: 'Gemini 3.1 Pro', value: 'copilot/gemini-3.1-pro-preview' },
+      { label: 'Gemini 3.5 Flash', value: 'copilot/gemini-3.5-flash' },
       { label: 'GPT-5.2 Codex', value: 'copilot/gpt-5.2-codex' },
+      { label: 'GPT-5.4', value: 'copilot/gpt-5.4' },
+      { label: 'GPT-5.4 Mini', value: 'copilot/gpt-5.4-mini' },
+      { label: 'GPT-5.5', value: 'copilot/gpt-5.5' },
       { label: 'GPT-5 Mini', value: 'copilot/gpt-5-mini' },
       { label: 'GPT-4.1', value: 'copilot/gpt-4.1' },
       { label: 'GPT-4o', value: 'copilot/gpt-4o' },
       { label: 'GPT-4o Mini', value: 'copilot/gpt-4o-mini' },
-      { label: 'Gemini 3.1 Pro', value: 'copilot/gemini-3.1-pro-preview' },
-      { label: 'Grok Code Fast 1', value: 'copilot/grok-code-fast-1' },
     ],
   },
   gemini: {
@@ -456,4 +459,4 @@ export const SPECIFICITY_STAGES: StageDef[] = [
 ];
 
 /* ── Helpers ── */
-export { getProvider, getModelLabel } from './provider-utils.js';
+export { getModelLabel, getProvider } from './provider-utils.js';
