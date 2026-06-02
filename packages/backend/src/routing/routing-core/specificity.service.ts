@@ -2,19 +2,28 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
-import { DEFAULT_RESPONSE_MODE, DEFAULT_OUTPUT_MODALITY } from 'manifest-shared';
-import type { AuthType, ModelRoute, ResponseMode } from 'manifest-shared';
+import {
+  DEFAULT_RESPONSE_MODE,
+  DEFAULT_OUTPUT_MODALITY,
+  isFallbackRouteTargetArray,
+  isHeaderTierFallbackRef,
+  isModelRoute,
+} from 'manifest-shared';
+import type { AuthType, FallbackRouteTarget, ModelRoute, ResponseMode } from 'manifest-shared';
 import { SpecificityAssignment } from '../../entities/specificity-assignment.entity';
 import { ModelDiscoveryService } from '../../model-discovery/model-discovery.service';
 import { RoutingCacheService } from './routing-cache.service';
 import { explicitRoute, unambiguousRoute } from './route-helpers';
 import { assertStreamableResponseMode } from './response-mode-guard';
+import { HeaderTier } from '../../entities/header-tier.entity';
 
 @Injectable()
 export class SpecificityService {
   constructor(
     @InjectRepository(SpecificityAssignment)
     private readonly repo: Repository<SpecificityAssignment>,
+    @InjectRepository(HeaderTier)
+    private readonly headerTierRepo: Repository<HeaderTier>,
     private readonly routingCache: RoutingCacheService,
     private readonly discoveryService: ModelDiscoveryService,
   ) {}
@@ -102,7 +111,7 @@ export class SpecificityService {
         existing.response_mode,
         `task-specific tier "${category}"`,
         route,
-        existing.fallback_routes,
+        modelRoutesOnly(existing.fallback_routes),
       );
       existing.override_route = route;
       existing.is_active = true;
@@ -156,7 +165,7 @@ export class SpecificityService {
         responseMode,
         `task-specific tier "${category}"`,
         existing.override_route ?? existing.auto_assigned_route,
-        existing.fallback_routes,
+        modelRoutesOnly(existing.fallback_routes),
       );
       existing.response_mode = responseMode;
       existing.updated_at = new Date().toISOString();
@@ -205,15 +214,18 @@ export class SpecificityService {
     category: string,
     models: string[],
     routes?: ModelRoute[],
-  ): Promise<ModelRoute[]> {
+    targets?: FallbackRouteTarget[],
+  ): Promise<FallbackRouteTarget[]> {
     const existing = await this.repo.findOne({ where: { agent_id: agentId, category } });
     if (!existing) return [];
-    const fallbackRoutes = await this.buildFallbackRoutes(agentId, models, routes);
+    const fallbackRoutes = targets
+      ? await this.validateFallbackTargets(agentId, targets)
+      : await this.buildFallbackRoutes(agentId, models, routes);
     assertStreamableResponseMode(
       existing.response_mode,
       `task-specific tier "${category}"`,
       existing.override_route ?? existing.auto_assigned_route,
-      fallbackRoutes,
+      modelRoutesOnly(fallbackRoutes),
     );
     existing.fallback_routes = fallbackRoutes;
     existing.updated_at = new Date().toISOString();
@@ -248,6 +260,27 @@ export class SpecificityService {
       },
     );
     this.routingCache.invalidateAgent(agentId);
+  }
+
+  private async validateFallbackTargets(
+    agentId: string,
+    targets: FallbackRouteTarget[],
+  ): Promise<FallbackRouteTarget[] | null> {
+    if (targets.length === 0) return null;
+    if (!isFallbackRouteTargetArray(targets)) {
+      throw new BadRequestException(
+        'Fallback targets must be model routes or header-tier references.',
+      );
+    }
+    const headerTiers = await this.headerTierRepo.find({ where: { agent_id: agentId } });
+    for (const target of targets) {
+      if (!isHeaderTierFallbackRef(target)) continue;
+      const match = headerTiers.find((t) => t.id === target.id && t.enabled);
+      if (!match || !match.override_route) {
+        throw new BadRequestException(`Header tier fallback "${target.id}" is not available.`);
+      }
+    }
+    return targets;
   }
 
   /**
@@ -288,4 +321,10 @@ export class SpecificityService {
     }
     return resolved;
   }
+}
+
+function modelRoutesOnly(targets: FallbackRouteTarget[] | null | undefined): ModelRoute[] | null {
+  if (!targets) return null;
+  const routes = targets.filter(isModelRoute);
+  return routes.length > 0 ? routes : null;
 }

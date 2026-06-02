@@ -29,6 +29,7 @@ import {
   modelParamsScopeForRouting,
   routeEquals,
   snapshotRequestParams,
+  isModelRoute,
 } from 'manifest-shared';
 import type { ParamMergeContext } from './proxy-fallback.service';
 import {
@@ -525,7 +526,7 @@ export class ProxyService {
     if (!fallbackRoutes) {
       const tiers = await this.tierService.getTiers(agentId);
       const assignment = tiers.find((t) => t.tier === resolved.tier);
-      fallbackRoutes = assignment?.fallback_routes ?? null;
+      fallbackRoutes = assignment?.fallback_routes?.filter(isModelRoute) ?? null;
     }
     if ((resolved.response_mode ?? DEFAULT_RESPONSE_MODE) === 'stream') {
       const effectiveRoutes = effectiveRoutesForResponseMode(

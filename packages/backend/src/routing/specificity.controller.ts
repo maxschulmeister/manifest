@@ -109,7 +109,13 @@ export class SpecificityController {
   ) {
     this.validateCategory(category);
     const agent = await this.resolveAgentService.resolve(user.id, agentName);
-    return this.specificityService.setFallbacks(agent.id, category, body.models, body.routes);
+    return this.specificityService.setFallbacks(
+      agent.id,
+      category,
+      body.models,
+      body.routes,
+      body.targets,
+    );
   }
 
   @Delete(':agentName/specificity/:category/fallbacks')

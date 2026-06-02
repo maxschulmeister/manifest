@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { isModelRoute } from 'manifest-shared';
 import { TierAssignment } from '../../entities/tier-assignment.entity';
 import { ModelPricingCacheService } from '../../model-prices/model-pricing-cache.service';
 import { TierAutoAssignService } from './tier-auto-assign.service';
@@ -48,7 +49,9 @@ export class RoutingInvalidationService {
         invalidatedCount += 1;
       }
       if (tier.fallback_routes && tier.fallback_routes.length > 0) {
-        const filtered = tier.fallback_routes.filter((r) => !removedSet.has(r.model));
+        const filtered = tier.fallback_routes.filter(
+          (r) => !isModelRoute(r) || !removedSet.has(r.model),
+        );
         if (filtered.length !== tier.fallback_routes.length) {
           tier.fallback_routes = filtered.length > 0 ? filtered : null;
           mutated = true;

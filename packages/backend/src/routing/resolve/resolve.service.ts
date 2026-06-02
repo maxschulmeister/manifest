@@ -9,13 +9,18 @@ import { SpecificityPenaltyService } from '../routing-core/specificity-penalty.s
 import { HeaderTierService } from '../header-tiers/header-tier.service';
 import { ModelPricingCacheService } from '../../model-prices/model-pricing-cache.service';
 import { ModelDiscoveryService } from '../../model-discovery/model-discovery.service';
-import { readFallbackRoutes, readOverrideRoute } from '../routing-core/route-helpers';
+import { readOverrideRoute } from '../routing-core/route-helpers';
 import { effectiveRoutesForResponseMode } from '../routing-core/response-mode-guard';
 import { scoreRequest, ScorerInput, MomentumInput, scanMessages } from '../../scoring';
 import { ResolveResponse } from '../dto/resolve-response';
 import { inferProviderFromModelName } from '../../common/utils/provider-aliases';
 import { Agent } from '../../entities/agent.entity';
-import { DEFAULT_RESPONSE_MODE, DEFAULT_OUTPUT_MODALITY } from 'manifest-shared';
+import {
+  DEFAULT_RESPONSE_MODE,
+  DEFAULT_OUTPUT_MODALITY,
+  isFallbackRouteTargetArray,
+  isModelRoute,
+} from 'manifest-shared';
 import type {
   AuthType,
   ModelAliasClassification,
@@ -108,7 +113,7 @@ export class ResolveService {
 
     const outputModality = outputModalityFor(assignment);
     const responseMode = responseModeFor(assignment);
-    const fallbackRoutes = readFallbackRoutes(assignment);
+    const fallbackRoutes = await this.resolveFallbackTargets(agentId, assignment.fallback_routes);
     const route = await this.buildResolvedRoute(agentId, assignment);
     const effectiveRoutes = effectiveRoutesForResponseMode(responseMode, route, fallbackRoutes);
     if (!effectiveRoutes.primaryRoute) {
@@ -177,7 +182,7 @@ export class ResolveService {
 
     const outputModality = outputModalityFor(assignment);
     const responseMode = responseModeFor(assignment);
-    const fallbackRoutes = readFallbackRoutes(assignment);
+    const fallbackRoutes = await this.resolveFallbackTargets(agentId, assignment.fallback_routes);
     const route = await this.buildResolvedRoute(agentId, assignment);
     const effectiveRoutes = effectiveRoutesForResponseMode(responseMode, route, fallbackRoutes);
     return {
@@ -231,7 +236,7 @@ export class ResolveService {
     return {
       tier: 'standard',
       route: null,
-      fallback_routes: readFallbackRoutes(match),
+      fallback_routes: await this.resolveFallbackTargets(agentId, match.fallback_routes),
       output_modality: outputModalityFor(match),
       response_mode: responseModeFor(match),
       confidence: 1,
@@ -279,7 +284,7 @@ export class ResolveService {
 
     const outputModality = outputModalityFor(match);
     const responseMode = responseModeFor(match);
-    const fallbackRoutes = readFallbackRoutes(match);
+    const fallbackRoutes = await this.resolveFallbackTargets(agentId, match.fallback_routes);
     const effectiveRoutes = effectiveRoutesForResponseMode(responseMode, route, fallbackRoutes);
 
     return {
@@ -333,7 +338,7 @@ export class ResolveService {
 
     const outputModality = outputModalityFor(assignment);
     const responseMode = responseModeFor(assignment);
-    const fallbackRoutes = readFallbackRoutes(assignment);
+    const fallbackRoutes = await this.resolveFallbackTargets(agentId, assignment.fallback_routes);
     const enrichedRoute = route ? await this.enrichRouteKeyLabel(agentId, route) : null;
     const effectiveRoutes = effectiveRoutesForResponseMode(
       responseMode,
@@ -413,7 +418,7 @@ export class ResolveService {
 
     const outputModality = outputModalityFor(assignment);
     const responseMode = responseModeFor(assignment);
-    const fallbackRoutes = readFallbackRoutes(assignment);
+    const fallbackRoutes = await this.resolveFallbackTargets(agentId, assignment.fallback_routes);
     const enrichedRoute = await this.enrichRouteKeyLabel(agentId, route);
     const effectiveRoutes = effectiveRoutesForResponseMode(
       responseMode,
@@ -432,6 +437,39 @@ export class ResolveService {
       reason: 'specificity',
       specificity_category: detected.category,
     };
+  }
+
+  private async resolveFallbackTargets(
+    agentId: string,
+    targets: unknown,
+  ): Promise<ModelRoute[] | null> {
+    if (targets == null) return null;
+    if (!isFallbackRouteTargetArray(targets)) return null;
+
+    const resolved: ModelRoute[] = [];
+    for (const target of targets) {
+      if (isModelRoute(target)) {
+        resolved.push(target);
+        continue;
+      }
+      const expanded = await this.resolveHeaderTierFallback(agentId, target.id);
+      if (expanded) resolved.push(...expanded);
+    }
+    return resolved.length > 0 ? resolved : null;
+  }
+
+  private async resolveHeaderTierFallback(
+    agentId: string,
+    headerTierId: string,
+  ): Promise<ModelRoute[] | null> {
+    const tiers = await this.headerTierService.list(agentId);
+    const tier = tiers.find((t) => t.id === headerTierId && t.enabled);
+    const override = tier ? readOverrideRoute(tier) : null;
+    if (!tier || !override) return null;
+
+    const route = await this.enrichRouteKeyLabel(agentId, override);
+    const fallbackRoutes = await this.resolveFallbackTargets(agentId, tier.fallback_routes);
+    return fallbackRoutes ? [route, ...fallbackRoutes] : [route];
   }
 
   /**

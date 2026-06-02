@@ -10,6 +10,7 @@ import type { TierAutoAssignService } from '../tier-auto-assign.service';
 import type { RoutingCacheService } from '../routing-cache.service';
 import type { ProviderService } from '../provider.service';
 import type { ModelDiscoveryService } from '../../../model-discovery/model-discovery.service';
+import type { HeaderTier } from '../../../entities/header-tier.entity';
 
 const route = (provider: string, authType: ModelRoute['authType'], model: string): ModelRoute => ({
   provider,
@@ -54,6 +55,7 @@ const makeRepo = <T>(): RepoMock<T> => ({
 describe('TierService', () => {
   let providerRepo: RepoMock<UserProvider>;
   let tierRepo: RepoMock<TierAssignment>;
+  let headerTierRepo: RepoMock<HeaderTier>;
   let autoAssign: jest.Mocked<Pick<TierAutoAssignService, 'recalculate'>>;
   let routingCache: {
     getTiers: jest.Mock;
@@ -67,6 +69,7 @@ describe('TierService', () => {
   beforeEach(() => {
     providerRepo = makeRepo<UserProvider>();
     tierRepo = makeRepo<TierAssignment>();
+    headerTierRepo = makeRepo<HeaderTier>();
     autoAssign = { recalculate: jest.fn().mockResolvedValue(undefined) };
     routingCache = {
       getTiers: jest.fn().mockReturnValue(null),
@@ -79,6 +82,7 @@ describe('TierService', () => {
     svc = new TierService(
       providerRepo as unknown as Repository<UserProvider>,
       tierRepo as unknown as Repository<TierAssignment>,
+      headerTierRepo as unknown as Repository<HeaderTier>,
       autoAssign as unknown as TierAutoAssignService,
       routingCache as unknown as RoutingCacheService,
       providerService as unknown as ProviderService,
@@ -485,6 +489,25 @@ describe('TierService', () => {
 
       const result = await svc.setFallbacks('agent-1', 'standard', []);
       expect(result).toEqual([]);
+    });
+
+    it('saves enabled header-tier refs from fallback targets', async () => {
+      tierRepo.findOne.mockResolvedValue({
+        agent_id: 'agent-1',
+        tier: 'standard',
+        fallback_routes: null,
+      } as TierAssignment);
+      headerTierRepo.find.mockResolvedValue([
+        { id: 'fast-tier', enabled: true, override_route: route('openai', 'api_key', 'gpt-4o') },
+      ] as HeaderTier[]);
+
+      const targets = [{ kind: 'header_tier' as const, id: 'fast-tier' }];
+      const result = await svc.setFallbacks('agent-1', 'standard', [], undefined, targets);
+
+      expect(result).toEqual(targets);
+      expect(tierRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ fallback_routes: targets }),
+      );
     });
 
     it('throws when a model cannot be unambiguously resolved', async () => {

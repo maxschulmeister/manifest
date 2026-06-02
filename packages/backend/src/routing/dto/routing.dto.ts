@@ -12,7 +12,13 @@ import {
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 
-import { AUTH_TYPES, RESPONSE_MODES, TIER_SLOTS, type ResponseMode } from 'manifest-shared';
+import {
+  AUTH_TYPES,
+  RESPONSE_MODES,
+  TIER_SLOTS,
+  type FallbackRouteTarget,
+  type ResponseMode,
+} from 'manifest-shared';
 import { PROVIDER_BY_ID_OR_ALIAS } from '../../common/constants/providers';
 
 const KNOWN_PROVIDER_IDS: readonly string[] = Array.from(PROVIDER_BY_ID_OR_ALIAS.keys());
@@ -37,6 +43,15 @@ export class ModelRouteDto {
   @MaxLength(MAX_PROVIDER_KEY_LABEL_LENGTH)
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   keyLabel?: string;
+}
+
+export class HeaderTierFallbackRefDto {
+  @IsIn(['header_tier'])
+  kind!: 'header_tier';
+
+  @IsString()
+  @IsNotEmpty()
+  id!: string;
 }
 
 export class AgentNameParamDto {
@@ -204,6 +219,11 @@ export class SetFallbacksDto {
   @ValidateNested({ each: true })
   @Type(() => ModelRouteDto)
   routes?: ModelRouteDto[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(5)
+  targets?: FallbackRouteTarget[];
 }
 
 export class SetResponseModeDto {

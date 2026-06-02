@@ -20,6 +20,14 @@ import ModelCapabilityBadges, {
   ModelModalityBadges,
 } from './ModelCapabilityBadges.js';
 
+interface HeaderTierOption {
+  id: string;
+  name: string;
+  route: { provider: string; authType: AuthType; model: string } | null;
+}
+
+type PickerTab = AuthType | 'tiers';
+
 interface Props {
   tierId: string;
   agentName?: string;
@@ -28,6 +36,8 @@ interface Props {
   customProviders?: CustomProviderData[];
   connectedProviders?: RoutingProvider[];
   onSelect: (tierId: string, modelName: string, providerId: string, authType?: AuthType) => void;
+  onSelectHeaderTier?: (tierId: string, headerTierId: string) => void;
+  headerTierOptions?: HeaderTierOption[];
   onClose: () => void;
   onConnectProviders?: () => void;
   onProviderRefreshed?: () => void | Promise<void>;
@@ -73,19 +83,23 @@ const ModelPickerModal: Component<Props> = (props) => {
   // Show the tab strip whenever the user has models in more than one auth
   // category — otherwise the picker is single-category and the tabs add
   // noise. Local counts as its own category alongside subscription/api_key.
-  const showTabs = () => [hasSubscription(), hasApiKey(), hasLocal()].filter(Boolean).length > 1;
+  const hasTierOptions = () => (props.headerTierOptions?.length ?? 0) > 0;
+  const showTabs = () =>
+    [hasSubscription(), hasApiKey(), hasLocal(), hasTierOptions()].filter(Boolean).length > 1;
 
   // Default to the first connected category (subscription > api_key > local)
   // so the picker opens on something the user actually has. When nothing is
   // connected the default is 'api_key' — matches the pre-local behavior so
   // existing snapshots / tests that assume the free-models pill is visible
   // (only shown for api_key) don't start failing.
-  const resolveInitialTab = (): AuthType => {
+  const resolveInitialTab = (): PickerTab => {
     if (hasSubscription()) return 'subscription';
     if (hasLocal() && !hasApiKey()) return 'local';
+    if (hasApiKey()) return 'api_key';
+    if (hasTierOptions()) return 'tiers';
     return 'api_key';
   };
-  const [activeTab, setActiveTab] = createSignal<AuthType>(resolveInitialTab());
+  const [activeTab, setActiveTab] = createSignal<PickerTab>(resolveInitialTab());
   const [search, setSearch] = createSignal('');
   const [showFreeOnly, setShowFreeOnly] = createSignal(false);
   /** Required capabilities: only show models that have ALL of these. */
@@ -167,6 +181,7 @@ const ModelPickerModal: Component<Props> = (props) => {
     const labels = providerLabelMap();
     const cpNames = customProviderNameMap();
     const tab = activeTab();
+    if (tab === 'tiers') return [];
     const hasConnectedProviders = (props.connectedProviders ?? []).length > 0;
 
     type ModalModel = { value: string; label: string; pricing: AvailableModel };
@@ -464,11 +479,25 @@ const ModelPickerModal: Component<Props> = (props) => {
                   Local
                 </button>
               </Show>
+              <Show when={hasTierOptions()}>
+                <button
+                  role="tab"
+                  aria-selected={activeTab() === 'tiers'}
+                  class="panel__tab"
+                  classList={{ 'panel__tab--active': activeTab() === 'tiers' }}
+                  onClick={() => {
+                    setActiveTab('tiers');
+                    setShowFreeOnly(false);
+                  }}
+                >
+                  Tiers
+                </button>
+              </Show>
             </div>
           </div>
         </Show>
 
-        <Show when={totalAvailableModels() > 5}>
+        <Show when={activeTab() !== 'tiers' && totalAvailableModels() > 5}>
           <div class="routing-modal__search-wrap">
             <svg
               class="routing-modal__search-icon"
@@ -497,224 +526,252 @@ const ModelPickerModal: Component<Props> = (props) => {
           </div>
         </Show>
 
-        <div class="routing-modal__filter-bar">
-          <div class="routing-modal__filter-left">
-            <Show when={isPaid()}>
-              <button
-                type="button"
-                class="routing-modal__cap-pill"
-                classList={{ 'routing-modal__cap-pill--active': showFreeOnly() }}
-                onClick={() => setShowFreeOnly(!showFreeOnly())}
-              >
-                Free models only
-              </button>
-            </Show>
-          </div>
-          <div class="routing-modal__filter-right">
-            <For each={availableCapabilities()}>
-              {(cap) => (
+        <Show when={activeTab() !== 'tiers'}>
+          <div class="routing-modal__filter-bar">
+            <div class="routing-modal__filter-left">
+              <Show when={isPaid()}>
                 <button
                   type="button"
                   class="routing-modal__cap-pill"
-                  classList={{
-                    'routing-modal__cap-pill--active': isCapabilityRequired(cap),
-                  }}
-                  onClick={() => toggleCapability(cap)}
+                  classList={{ 'routing-modal__cap-pill--active': showFreeOnly() }}
+                  onClick={() => setShowFreeOnly(!showFreeOnly())}
                 >
-                  <span class="routing-modal__filter-pill-icon" innerHTML={CAPABILITY_ICONS[cap]} />
-                  {CAPABILITY_LABELS[cap]}
+                  Free models only
+                </button>
+              </Show>
+            </div>
+            <div class="routing-modal__filter-right">
+              <For each={availableCapabilities()}>
+                {(cap) => (
+                  <button
+                    type="button"
+                    class="routing-modal__cap-pill"
+                    classList={{
+                      'routing-modal__cap-pill--active': isCapabilityRequired(cap),
+                    }}
+                    onClick={() => toggleCapability(cap)}
+                  >
+                    <span
+                      class="routing-modal__filter-pill-icon"
+                      innerHTML={CAPABILITY_ICONS[cap]}
+                    />
+                    {CAPABILITY_LABELS[cap]}
+                  </button>
+                )}
+              </For>
+            </div>
+          </div>
+        </Show>
+
+        <Show when={activeTab() === 'tiers'}>
+          <div class="routing-modal__list">
+            <For each={props.headerTierOptions ?? []}>
+              {(tier) => (
+                <button
+                  class="routing-modal__model"
+                  onClick={() => props.onSelectHeaderTier?.(props.tierId, tier.id)}
+                >
+                  <span class="routing-modal__model-left">
+                    <span class="routing-modal__model-label">{tier.name}</span>
+                  </span>
+                  <span class="routing-modal__model-cell">
+                    <span class="routing-modal__model-cell-label">Route</span>
+                    {tier.route?.model ?? 'No model'}
+                  </span>
                 </button>
               )}
             </For>
           </div>
-        </div>
+        </Show>
 
-        <div class="routing-modal__list">
-          <Show when={groupedModels().length > 0}>
-            <div class="routing-modal__table-head" aria-hidden="true">
-              <span>Model</span>
-              <span>Capabilities</span>
-              <span>Input</span>
-              <span>Output</span>
-              <span>Price</span>
-            </div>
-          </Show>
-          <For each={groupedModels()}>
-            {(group) => (
-              <div class="routing-modal__group">
-                <div class="routing-modal__group-header">
-                  <span class="routing-modal__group-icon">
-                    {group.provId.startsWith('custom:')
-                      ? (() => {
-                          const cp = (props.customProviders ?? []).find(
-                            (c) => `custom:${c.id}` === group.provId,
-                          );
-                          return (
-                            customProviderLogo(group.name, 16, cp?.base_url) ?? (
-                              <span
-                                class="provider-card__logo-letter"
-                                style={{
-                                  background: customProviderColor(group.name),
-                                  width: '16px',
-                                  height: '16px',
-                                  'font-size': '9px',
-                                  'border-radius': '50%',
-                                }}
-                              >
-                                {group.name.charAt(0).toUpperCase()}
-                              </span>
-                            )
-                          );
-                        })()
-                      : providerIcon(group.provId, 16)}
-                  </span>
-                  <span class="routing-modal__group-name">{group.name}</span>
-                  <Show when={props.agentName && !group.provId.startsWith('custom:')}>
-                    <button
-                      class="routing-modal__group-refresh"
-                      disabled={refreshingProvId() !== null}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void handleRefreshGroup(group.provId, group.name);
-                      }}
-                      aria-label={`Refresh ${group.name} models`}
-                      title={`Refresh ${group.name} models`}
-                    >
-                      <svg
-                        width="12"
-                        height="12"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        aria-hidden="true"
-                        classList={{
-                          'routing-modal__group-refresh-icon--spinning':
-                            refreshingProvId() === group.provId,
-                        }}
-                      >
-                        <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
-                        <path d="M21 3v5h-5" />
-                      </svg>
-                    </button>
-                  </Show>
-                </div>
-                <For each={group.models}>
-                  {(model) => {
-                    const disabledReason = () => missingRequiredCapability(model.pricing);
-                    const disabled = () => disabledReason() !== null;
-                    return (
+        <Show when={activeTab() !== 'tiers'}>
+          <div class="routing-modal__list">
+            <Show when={groupedModels().length > 0}>
+              <div class="routing-modal__table-head" aria-hidden="true">
+                <span>Model</span>
+                <span>Capabilities</span>
+                <span>Input</span>
+                <span>Output</span>
+                <span>Price</span>
+              </div>
+            </Show>
+            <For each={groupedModels()}>
+              {(group) => (
+                <div class="routing-modal__group">
+                  <div class="routing-modal__group-header">
+                    <span class="routing-modal__group-icon">
+                      {group.provId.startsWith('custom:')
+                        ? (() => {
+                            const cp = (props.customProviders ?? []).find(
+                              (c) => `custom:${c.id}` === group.provId,
+                            );
+                            return (
+                              customProviderLogo(group.name, 16, cp?.base_url) ?? (
+                                <span
+                                  class="provider-card__logo-letter"
+                                  style={{
+                                    background: customProviderColor(group.name),
+                                    width: '16px',
+                                    height: '16px',
+                                    'font-size': '9px',
+                                    'border-radius': '50%',
+                                  }}
+                                >
+                                  {group.name.charAt(0).toUpperCase()}
+                                </span>
+                              )
+                            );
+                          })()
+                        : providerIcon(group.provId, 16)}
+                    </span>
+                    <span class="routing-modal__group-name">{group.name}</span>
+                    <Show when={props.agentName && !group.provId.startsWith('custom:')}>
                       <button
-                        class="routing-modal__model"
-                        classList={{ 'routing-modal__model--disabled': disabled() }}
-                        disabled={disabled()}
-                        title={disabledReason() ?? undefined}
-                        onClick={() =>
-                          props.onSelect(props.tierId, model.value, group.provId, activeTab())
-                        }
+                        class="routing-modal__group-refresh"
+                        disabled={refreshingProvId() !== null}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleRefreshGroup(group.provId, group.name);
+                        }}
+                        aria-label={`Refresh ${group.name} models`}
+                        title={`Refresh ${group.name} models`}
                       >
-                        <span class="routing-modal__model-left">
-                          <span class="routing-modal__model-label">
-                            {model.label}
-                            <Show when={isRecommended(model.value, group.provId, activeTab())}>
-                              <span class="routing-modal__recommended"> (recommended)</span>
-                            </Show>
-                            <Show when={modelRole(model.value, group.provId, activeTab())}>
-                              {(role) => <span class="routing-modal__role-tag">{role()}</span>}
+                        <svg
+                          width="12"
+                          height="12"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          aria-hidden="true"
+                          classList={{
+                            'routing-modal__group-refresh-icon--spinning':
+                              refreshingProvId() === group.provId,
+                          }}
+                        >
+                          <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
+                          <path d="M21 3v5h-5" />
+                        </svg>
+                      </button>
+                    </Show>
+                  </div>
+                  <For each={group.models}>
+                    {(model) => {
+                      const disabledReason = () => missingRequiredCapability(model.pricing);
+                      const disabled = () => disabledReason() !== null;
+                      return (
+                        <button
+                          class="routing-modal__model"
+                          classList={{ 'routing-modal__model--disabled': disabled() }}
+                          disabled={disabled()}
+                          title={disabledReason() ?? undefined}
+                          onClick={() =>
+                            props.onSelect(props.tierId, model.value, group.provId, activeTab())
+                          }
+                        >
+                          <span class="routing-modal__model-left">
+                            <span class="routing-modal__model-label">
+                              {model.label}
+                              <Show when={isRecommended(model.value, group.provId, activeTab())}>
+                                <span class="routing-modal__recommended"> (recommended)</span>
+                              </Show>
+                              <Show when={modelRole(model.value, group.provId, activeTab())}>
+                                {(role) => <span class="routing-modal__role-tag">{role()}</span>}
+                              </Show>
+                            </span>
+                          </span>
+                          <span class="routing-modal__model-cell">
+                            <span class="routing-modal__model-cell-label">Capabilities</span>
+                            <Show
+                              when={actionCapabilitiesFor(model.pricing).length > 0}
+                              fallback={
+                                <span
+                                  class="model-capability-badges model-capability-badges--compact"
+                                  aria-label="No stream or tools"
+                                />
+                              }
+                            >
+                              <ModelCapabilityBadges
+                                capabilities={actionCapabilitiesFor(model.pricing)}
+                                compact
+                                iconOnly
+                              />
                             </Show>
                           </span>
-                        </span>
-                        <span class="routing-modal__model-cell">
-                          <span class="routing-modal__model-cell-label">Capabilities</span>
-                          <Show
-                            when={actionCapabilitiesFor(model.pricing).length > 0}
-                            fallback={
-                              <span
-                                class="model-capability-badges model-capability-badges--compact"
-                                aria-label="No stream or tools"
-                              />
-                            }
-                          >
-                            <ModelCapabilityBadges
-                              capabilities={actionCapabilitiesFor(model.pricing)}
+                          <span class="routing-modal__model-cell">
+                            <span class="routing-modal__model-cell-label">Input</span>
+                            <ModelModalityBadges
+                              modalities={inputModalitiesFor(model.pricing)}
+                              direction="input"
                               compact
                               iconOnly
                             />
-                          </Show>
-                        </span>
-                        <span class="routing-modal__model-cell">
-                          <span class="routing-modal__model-cell-label">Input</span>
-                          <ModelModalityBadges
-                            modalities={inputModalitiesFor(model.pricing)}
-                            direction="input"
-                            compact
-                            iconOnly
-                          />
-                        </span>
-                        <span class="routing-modal__model-cell">
-                          <span class="routing-modal__model-cell-label">Output</span>
-                          <ModelModalityBadges
-                            modalities={outputModalitiesFor(model.pricing)}
-                            direction="output"
-                            compact
-                            iconOnly
-                          />
-                        </span>
-                        <span class="routing-modal__model-cell routing-modal__model-cell--price">
-                          <span class="routing-modal__model-cell-label">Price</span>
-                          <Show
-                            when={isPaid()}
-                            fallback={
-                              <span class="routing-modal__model-price">
-                                {isLocal()
-                                  ? 'Runs on your machine'
-                                  : (formatPerRequestCost(model.pricing.cost_per_request) ??
-                                    'Included in subscription')}
-                              </span>
-                            }
-                          >
-                            <Show when={model.pricing}>
-                              {(p) => (
+                          </span>
+                          <span class="routing-modal__model-cell">
+                            <span class="routing-modal__model-cell-label">Output</span>
+                            <ModelModalityBadges
+                              modalities={outputModalitiesFor(model.pricing)}
+                              direction="output"
+                              compact
+                              iconOnly
+                            />
+                          </span>
+                          <span class="routing-modal__model-cell routing-modal__model-cell--price">
+                            <span class="routing-modal__model-cell-label">Price</span>
+                            <Show
+                              when={isPaid()}
+                              fallback={
                                 <span class="routing-modal__model-price">
-                                  {pricePerM(p().input_price_per_token)} in ·{' '}
-                                  {pricePerM(p().output_price_per_token)} out
+                                  {isLocal()
+                                    ? 'Runs on your machine'
+                                    : (formatPerRequestCost(model.pricing.cost_per_request) ??
+                                      'Included in subscription')}
                                 </span>
-                              )}
+                              }
+                            >
+                              <Show when={model.pricing}>
+                                {(p) => (
+                                  <span class="routing-modal__model-price">
+                                    {pricePerM(p().input_price_per_token)} in ·{' '}
+                                    {pricePerM(p().output_price_per_token)} out
+                                  </span>
+                                )}
+                              </Show>
                             </Show>
-                          </Show>
-                        </span>
-                      </button>
-                    );
-                  }}
-                </For>
+                          </span>
+                        </button>
+                      );
+                    }}
+                  </For>
+                </div>
+              )}
+            </For>
+            <Show when={groupedModels().length === 0}>
+              <div class="routing-modal__empty">
+                {search().trim()
+                  ? 'No models match your search.'
+                  : showFreeOnly()
+                    ? 'No free models available from your connected providers.'
+                    : isSub()
+                      ? 'No subscription providers connected. Connect a provider to see models.'
+                      : isLocal()
+                        ? 'No local providers connected. Connect a local provider to see models.'
+                        : 'No API key providers connected. Connect a provider to see models.'}
+                <Show when={!search().trim() && !showFreeOnly() && props.onConnectProviders}>
+                  <button
+                    class="btn btn--primary btn--sm"
+                    style="margin-top: 12px;"
+                    onClick={() => props.onConnectProviders?.()}
+                  >
+                    Connect providers
+                  </button>
+                </Show>
               </div>
-            )}
-          </For>
-          <Show when={groupedModels().length === 0}>
-            <div class="routing-modal__empty">
-              {search().trim()
-                ? 'No models match your search.'
-                : showFreeOnly()
-                  ? 'No free models available from your connected providers.'
-                  : isSub()
-                    ? 'No subscription providers connected. Connect a provider to see models.'
-                    : isLocal()
-                      ? 'No local providers connected. Connect a local provider to see models.'
-                      : 'No API key providers connected. Connect a provider to see models.'}
-              <Show when={!search().trim() && !showFreeOnly() && props.onConnectProviders}>
-                <button
-                  class="btn btn--primary btn--sm"
-                  style="margin-top: 12px;"
-                  onClick={() => props.onConnectProviders?.()}
-                >
-                  Connect providers
-                </button>
-              </Show>
-            </div>
-          </Show>
-        </div>
+            </Show>
+          </div>
+        </Show>
       </div>
     </div>
   );

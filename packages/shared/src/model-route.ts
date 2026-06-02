@@ -7,6 +7,13 @@ export interface ModelRoute {
   keyLabel?: string | null;
 }
 
+export interface HeaderTierFallbackRef {
+  kind: 'header_tier';
+  id: string;
+}
+
+export type FallbackRouteTarget = ModelRoute | HeaderTierFallbackRef;
+
 export function routeEquals(
   a: ModelRoute | null | undefined,
   b: ModelRoute | null | undefined,
@@ -47,6 +54,20 @@ export function isModelRoute(value: unknown): value is ModelRoute {
 
 export function isModelRouteArray(value: unknown): value is ModelRoute[] {
   return Array.isArray(value) && value.every(isModelRoute);
+}
+
+export function isHeaderTierFallbackRef(value: unknown): value is HeaderTierFallbackRef {
+  if (!value || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  return v.kind === 'header_tier' && typeof v.id === 'string' && v.id.length > 0;
+}
+
+export function isFallbackRouteTarget(value: unknown): value is FallbackRouteTarget {
+  return isModelRoute(value) || isHeaderTierFallbackRef(value);
+}
+
+export function isFallbackRouteTargetArray(value: unknown): value is FallbackRouteTarget[] {
+  return Array.isArray(value) && value.every(isFallbackRouteTarget);
 }
 
 export interface LegacyOverrideTriple {

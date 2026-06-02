@@ -1,6 +1,7 @@
 import type { UserProvider } from '../../entities/user-provider.entity';
 import type { DiscoveredModel } from '../../model-discovery/model-fetcher';
-import type { ModelRoute } from 'manifest-shared';
+import { isModelRoute } from 'manifest-shared';
+import type { FallbackRouteTarget, ModelRoute } from 'manifest-shared';
 
 export interface BaselineCostResult {
   modelId: string;
@@ -27,7 +28,7 @@ export interface CapabilityLookup {
 export interface RoutingSlot {
   override_route: ModelRoute | null;
   auto_assigned_route?: ModelRoute | null;
-  fallback_routes: ModelRoute[] | null;
+  fallback_routes: FallbackRouteTarget[] | null;
 }
 
 /**
@@ -42,7 +43,7 @@ export function collectRoutedModelIds(slots: RoutingSlot[]): string[] {
     if (primary) ids.add(primary);
     if (slot.fallback_routes) {
       for (const fb of slot.fallback_routes) {
-        if (fb.model) ids.add(fb.model);
+        if (isModelRoute(fb) && fb.model) ids.add(fb.model);
       }
     }
   }

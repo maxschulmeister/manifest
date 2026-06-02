@@ -1,5 +1,6 @@
 import type {
   AuthType,
+  FallbackRouteTarget,
   ModelCapability,
   ModelModality,
   ModelRoute,
@@ -8,7 +9,19 @@ import type {
 } from 'manifest-shared';
 import { BASE_URL, fetchJson, fetchMutate, parseErrorMessage, routingPath } from './core.js';
 
-export type { AuthType, ModelCapability, ModelModality, ModelRoute, ResponseMode, OutputModality };
+export type {
+  AuthType,
+  FallbackRouteTarget,
+  ModelCapability,
+  ModelModality,
+  ModelRoute,
+  ResponseMode,
+  OutputModality,
+};
+
+function isModelRouteTarget(route: FallbackRouteTarget): route is ModelRoute {
+  return !('kind' in route) || route.kind !== 'header_tier';
+}
 
 export interface RoutingProvider {
   id: string;
@@ -192,7 +205,7 @@ export interface TierAssignment {
   tier: string;
   override_route: ModelRoute | null;
   auto_assigned_route: ModelRoute | null;
-  fallback_routes: ModelRoute[] | null;
+  fallback_routes: FallbackRouteTarget[] | null;
   output_modality?: OutputModality;
   response_mode?: ResponseMode;
   updated_at: string;
@@ -264,11 +277,12 @@ export function setFallbacks(
   agentName: string,
   tier: string,
   models: string[],
-  routes?: ModelRoute[],
+  routes?: FallbackRouteTarget[],
 ) {
   const body: Record<string, unknown> = { models };
-  if (routes && routes.length === models.length) body.routes = routes;
-  return fetchMutate<ModelRoute[]>(
+  if (routes && routes.length === models.length) body.routes = routes.filter(isModelRouteTarget);
+  if (routes?.some((route) => route.kind === 'header_tier')) body.targets = routes;
+  return fetchMutate<FallbackRouteTarget[]>(
     routingPath(agentName, `tiers/${encodeURIComponent(tier)}/fallbacks`),
     {
       method: 'PUT',

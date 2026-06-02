@@ -325,7 +325,9 @@ const Routing: Component = () => {
     if (isSpecificityTier(tierId)) {
       const sa = specificityAssignments()?.find((a) => a.category === tierId);
       const currentRoutes = sa?.fallback_routes ?? [];
-      const current = currentRoutes.map((r) => r.model);
+      const current = currentRoutes.map((r) =>
+        'kind' in r && r.kind === 'header_tier' ? r.id : r.model,
+      );
       if (current.includes(modelName)) return;
       const updated = [...current, modelName];
       // Pass explicit (provider, authType, model) routes so the backend can
@@ -347,6 +349,31 @@ const Routing: Component = () => {
       return;
     }
     return actions.handleAddFallback(tierId, modelName, providerId, authType, providerKeyLabel);
+  };
+
+  const handleAddHeaderTierFallback = async (tierId: string, headerTierId: string) => {
+    if (isSpecificityTier(tierId)) {
+      const sa = specificityAssignments()?.find((a) => a.category === tierId);
+      const currentRoutes = sa?.fallback_routes ?? [];
+      if (
+        currentRoutes.some((r) => 'kind' in r && r.kind === 'header_tier' && r.id === headerTierId)
+      )
+        return;
+      const updatedRoutes = [...currentRoutes, { kind: 'header_tier' as const, id: headerTierId }];
+      const updated = updatedRoutes.map((r) =>
+        'kind' in r && r.kind === 'header_tier' ? r.id : r.model,
+      );
+      try {
+        const { setSpecificityFallbacks } = await import('../services/api.js');
+        await setSpecificityFallbacks(agentName(), tierId, updated, updatedRoutes);
+        await refetchSpecificity();
+        toast.success('Fallback tier added');
+      } catch {
+        toast.error('Failed to add fallback tier');
+      }
+      return;
+    }
+    await actions.handleAddHeaderTierFallback(tierId, headerTierId);
   };
 
   const isEnabled = () => connectedProviders()?.some((p) => p.is_active) ?? false;
@@ -708,6 +735,7 @@ const Routing: Component = () => {
         specificityAssignments={() => specificityAssignments() ?? []}
         customProviders={() => customProviders() ?? []}
         connectedProviders={() => connectedProviders() ?? []}
+        headerTiers={() => headerTiers() ?? []}
         getTier={(tierId) => {
           const generalist = actions.getTier(tierId);
           if (generalist) return generalist;
@@ -716,6 +744,7 @@ const Routing: Component = () => {
         }}
         onOverride={handleOverride}
         onAddFallback={handleAddFallback}
+        onAddHeaderTierFallback={handleAddHeaderTierFallback}
         onProviderUpdate={refetchAll}
       />
     </div>

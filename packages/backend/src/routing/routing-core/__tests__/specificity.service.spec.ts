@@ -6,6 +6,7 @@ import { SpecificityAssignment } from '../../../entities/specificity-assignment.
 import type { DiscoveredModel } from '../../../model-discovery/model-fetcher';
 import type { RoutingCacheService } from '../routing-cache.service';
 import type { ModelDiscoveryService } from '../../../model-discovery/model-discovery.service';
+import type { HeaderTier } from '../../../entities/header-tier.entity';
 
 const route = (provider: string, authType: ModelRoute['authType'], model: string): ModelRoute => ({
   provider,
@@ -41,6 +42,7 @@ const makeRepo = () => ({
 
 describe('SpecificityService', () => {
   let repo: ReturnType<typeof makeRepo>;
+  let headerTierRepo: ReturnType<typeof makeRepo>;
   let routingCache: {
     getSpecificity: jest.Mock;
     setSpecificity: jest.Mock;
@@ -51,6 +53,7 @@ describe('SpecificityService', () => {
 
   beforeEach(() => {
     repo = makeRepo();
+    headerTierRepo = makeRepo();
     routingCache = {
       getSpecificity: jest.fn().mockReturnValue(null),
       setSpecificity: jest.fn(),
@@ -60,6 +63,7 @@ describe('SpecificityService', () => {
 
     svc = new SpecificityService(
       repo as unknown as Repository<SpecificityAssignment>,
+      headerTierRepo as unknown as Repository<HeaderTier>,
       routingCache as unknown as RoutingCacheService,
       discoveryService as unknown as ModelDiscoveryService,
     );
@@ -295,6 +299,23 @@ describe('SpecificityService', () => {
         fallback_routes: null,
       } as SpecificityAssignment);
       expect(await svc.setFallbacks('agent-1', 'coding', [])).toEqual([]);
+    });
+
+    it('saves enabled header-tier refs from fallback targets', async () => {
+      repo.findOne.mockResolvedValue({
+        agent_id: 'agent-1',
+        category: 'coding',
+        fallback_routes: null,
+      } as SpecificityAssignment);
+      headerTierRepo.find.mockResolvedValue([
+        { id: 'fast-tier', enabled: true, override_route: route('openai', 'api_key', 'gpt-4o') },
+      ] as HeaderTier[]);
+
+      const targets = [{ kind: 'header_tier' as const, id: 'fast-tier' }];
+      const result = await svc.setFallbacks('agent-1', 'coding', [], undefined, targets);
+
+      expect(result).toEqual(targets);
+      expect(repo.save).toHaveBeenCalledWith(expect.objectContaining({ fallback_routes: targets }));
     });
 
     it('throws when any model cannot be unambiguously resolved', async () => {

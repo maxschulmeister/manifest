@@ -465,6 +465,33 @@ describe('ResolveService', () => {
       expect(result.fallback_routes).toEqual([route('anthropic', 'api_key', 'claude')]);
     });
 
+    it('expands header-tier fallback refs on specificity categories', async () => {
+      specificityService.getActiveAssignments.mockResolvedValue([
+        {
+          category: 'coding',
+          is_active: true,
+          override_route: route('openai', 'api_key', 'gpt-4o'),
+          auto_assigned_route: null,
+          fallback_routes: [{ kind: 'header_tier', id: 'fast-tier' }],
+        } as unknown as SpecificityAssignment,
+      ]);
+      headerTierService.list.mockResolvedValue([
+        {
+          id: 'fast-tier',
+          name: 'Fast',
+          enabled: true,
+          override_route: route('anthropic', 'api_key', 'claude-haiku'),
+          fallback_routes: null,
+        } as unknown as HeaderTier,
+      ]);
+      mockedScan.mockReturnValue({ category: 'coding', confidence: 0.9 } as never);
+
+      const result = await svc.resolve('agent-1', messages);
+
+      expect(result.reason).toBe('specificity');
+      expect(result.fallback_routes).toEqual([route('anthropic', 'api_key', 'claude-haiku')]);
+    });
+
     it('falls through when the override model is unavailable', async () => {
       specificityService.getActiveAssignments.mockResolvedValue([
         {
@@ -665,6 +692,40 @@ describe('ResolveService', () => {
       expect(result.tier).toBe('complex');
       expect(result.route).toEqual(route('anthropic', 'api_key', 'claude-opus'));
       expect(result.fallback_routes).toEqual([route('openai', 'api_key', 'gpt-4o')]);
+    });
+
+    it('expands header-tier fallback refs on complexity tiers', async () => {
+      mockedScore.mockReturnValue({
+        tier: 'simple',
+        confidence: 0.8,
+        score: 2,
+        reason: 'scored',
+      } as never);
+      tierService.getTiers.mockResolvedValue([
+        {
+          tier: 'simple',
+          override_route: route('openai', 'api_key', 'gpt-4o-mini'),
+          auto_assigned_route: null,
+          fallback_routes: [{ kind: 'header_tier', id: 'fast-tier' }],
+        } as unknown as TierAssignment,
+      ]);
+      headerTierService.list.mockResolvedValue([
+        {
+          id: 'fast-tier',
+          name: 'Fast',
+          enabled: true,
+          override_route: route('anthropic', 'api_key', 'claude-haiku'),
+          fallback_routes: [route('openai', 'api_key', 'gpt-4o')],
+        } as unknown as HeaderTier,
+      ]);
+
+      const result = await svc.resolve('agent-1', messages);
+
+      expect(result.route).toEqual(route('openai', 'api_key', 'gpt-4o-mini'));
+      expect(result.fallback_routes).toEqual([
+        route('anthropic', 'api_key', 'claude-haiku'),
+        route('openai', 'api_key', 'gpt-4o'),
+      ]);
     });
 
     it('falls back to the default tier when the scored tier is missing', async () => {

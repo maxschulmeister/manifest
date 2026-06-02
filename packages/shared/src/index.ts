@@ -40,10 +40,18 @@ export {
   routeEquals,
   isModelRoute,
   isModelRouteArray,
+  isHeaderTierFallbackRef,
+  isFallbackRouteTarget,
+  isFallbackRouteTargetArray,
   legacyToRoute,
   routeToLegacy,
 } from './model-route';
-export type { ModelRoute, LegacyOverrideTriple } from './model-route';
+export type {
+  ModelRoute,
+  HeaderTierFallbackRef,
+  FallbackRouteTarget,
+  LegacyOverrideTriple,
+} from './model-route';
 export { applyRequestParamDefaults } from './request-params';
 export type { JsonValue, RequestParamDefaults } from './request-params';
 export { snapshotRequestParams } from './request-params-snapshot';

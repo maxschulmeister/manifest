@@ -4,6 +4,7 @@ import {
   setFallbacks,
   type AuthType,
   type AvailableModel,
+  type FallbackRouteTarget,
   type CustomProviderData,
   type ModelRoute,
   type RequestParamDefaults,
@@ -36,7 +37,7 @@ interface FallbackListProps {
   // re-deriving them from `models`/`connectedProviders` — this fixes the
   // same-name-different-auth ambiguity reported in issue #1708 without
   // changing the visible UI for users whose data has been backfilled.
-  fallbackRoutes?: ModelRoute[] | null;
+  fallbackRoutes?: FallbackRouteTarget[] | null;
   responseMode?: ResponseMode;
   models: AvailableModel[];
   customProviders: CustomProviderData[];
@@ -56,7 +57,7 @@ interface FallbackListProps {
     agentName: string,
     tier: string,
     models: string[],
-    routes?: ModelRoute[],
+    routes?: FallbackRouteTarget[],
   ) => Promise<unknown>;
   persistClearFallbacks?: (agentName: string, tier: string) => Promise<unknown>;
   /**
@@ -116,7 +117,7 @@ const FallbackList: Component<FallbackListProps> = (props) => {
 
   const modelInfoFor = (model: string, index: number): AvailableModel | undefined => {
     const route = props.fallbackRoutes?.[index];
-    if (route) {
+    if (route && !('kind' in route)) {
       const routeProvider = resolveProviderId(route.provider)?.toLowerCase();
       const routeMatch = props.models.find((m) => {
         const modelProvider = resolveProviderId(m.provider)?.toLowerCase();
@@ -191,7 +192,7 @@ const FallbackList: Component<FallbackListProps> = (props) => {
 
   const providerIdFor = (model: string, index: number): string | undefined => {
     const route = props.fallbackRoutes?.[index];
-    if (route) return resolveProviderId(route.provider);
+    if (route && !('kind' in route)) return resolveProviderId(route.provider);
     const info = props.models.find((m) => m.model_name === model);
     if (info) return resolveProviderId(info.provider);
     return undefined;
@@ -199,7 +200,7 @@ const FallbackList: Component<FallbackListProps> = (props) => {
 
   const authTypeFor = (providerId: string | undefined, index: number): string | null => {
     const route = props.fallbackRoutes?.[index];
-    if (route) return route.authType;
+    if (route && !('kind' in route)) return route.authType;
     if (!providerId) return null;
     const provs = props.connectedProviders.filter(
       (p) => p.provider.toLowerCase() === providerId.toLowerCase(),
@@ -221,9 +222,9 @@ const FallbackList: Component<FallbackListProps> = (props) => {
   const persistClear = props.persistClearFallbacks ?? clearFallbacks;
 
   const reorderRoutes = (
-    routes: ModelRoute[] | null | undefined,
-    transform: (r: ModelRoute[]) => ModelRoute[],
-  ): ModelRoute[] | null => {
+    routes: FallbackRouteTarget[] | null | undefined,
+    transform: (r: FallbackRouteTarget[]) => FallbackRouteTarget[],
+  ): FallbackRouteTarget[] | null => {
     if (!routes || routes.length === 0) return null;
     const next = transform([...routes]);
     return next.length > 0 ? next : null;
@@ -370,7 +371,14 @@ const FallbackList: Component<FallbackListProps> = (props) => {
               // dropped. The bare `entry` string carries only the model name.
               const model = () => entry;
               const route = () => props.fallbackRoutes?.[i()];
-              const pinnedLabel = () => route()?.keyLabel ?? null;
+              const isHeaderTier = () => {
+                const r = route();
+                return !!r && 'kind' in r && r.kind === 'header_tier';
+              };
+              const pinnedLabel = () => {
+                const r = route();
+                return r && !('kind' in r) ? (r.keyLabel ?? null) : null;
+              };
               const provId = () => providerIdFor(model(), i());
               const isCustom = () => provId()?.startsWith('custom:');
               const auth = () => authTypeFor(provId(), i());
