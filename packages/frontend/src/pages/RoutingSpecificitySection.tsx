@@ -13,7 +13,6 @@ import type {
   AvailableModel,
   AuthType,
   FallbackRouteTarget,
-  ModelRoute,
   RequestParamDefaults,
   ResponseMode,
   RoutingProvider,
@@ -151,6 +150,7 @@ export interface RoutingSpecificitySectionProps {
   addingFallback: () => string | null;
   onDropdownOpen: (category: string) => void;
   onOverride: (category: string, model: string, provider: string, authType?: AuthType) => void;
+  onHeaderTierOverride?: (category: string, headerTierId: string) => void | Promise<void>;
   onPinKey?: (
     category: string,
     providerId: string,
@@ -280,6 +280,7 @@ const RoutingSpecificitySection: Component<RoutingSpecificitySectionProps> = (pr
                 agentName={props.agentName}
                 onDropdownOpen={props.onDropdownOpen}
                 onOverride={props.onOverride}
+                onHeaderTierOverride={props.onHeaderTierOverride}
                 onPinKey={props.onPinKey}
                 onReset={props.onReset}
                 onFallbackUpdate={props.onFallbackUpdate}

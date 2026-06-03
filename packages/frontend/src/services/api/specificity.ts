@@ -3,6 +3,7 @@ import type {
   AuthType,
   FallbackRouteTarget,
   ModelRoute,
+  RouteTarget,
   ResponseMode,
   OutputModality,
 } from './routing.js';
@@ -16,7 +17,7 @@ export interface SpecificityAssignment {
   agent_id: string;
   category: string;
   is_active: boolean;
-  override_route: ModelRoute | null;
+  override_route: RouteTarget | null;
   auto_assigned_route: ModelRoute | null;
   fallback_routes: FallbackRouteTarget[] | null;
   output_modality?: OutputModality;
@@ -62,6 +63,24 @@ export function overrideSpecificity(
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+    },
+  );
+}
+
+export function overrideSpecificityWithHeaderTier(
+  agentName: string,
+  category: string,
+  headerTierId: string,
+) {
+  return fetchMutate<SpecificityAssignment>(
+    routingPath(agentName, `specificity/${encodeURIComponent(category)}`),
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        target: { kind: 'header_tier', id: headerTierId },
+        model: headerTierId,
+      }),
     },
   );
 }

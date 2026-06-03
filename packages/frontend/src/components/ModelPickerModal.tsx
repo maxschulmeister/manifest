@@ -286,7 +286,7 @@ const ModelPickerModal: Component<Props> = (props) => {
     const t = props.tiers.find((r) => r.tier === props.tierId);
     if (!t) return null;
     const primaryRoute = t.override_route ?? t.auto_assigned_route ?? null;
-    if (primaryRoute) {
+    if (primaryRoute && !('kind' in primaryRoute)) {
       const matches =
         providerId && authType
           ? primaryRoute.model === modelName &&
@@ -300,11 +300,12 @@ const ModelPickerModal: Component<Props> = (props) => {
       providerId && authType
         ? fbRoutes.findIndex(
             (r) =>
+              !('kind' in r) &&
               r.model === modelName &&
               r.provider.toLowerCase() === providerId.toLowerCase() &&
               r.authType === authType,
           )
-        : fbRoutes.findIndex((r) => r.model === modelName);
+        : fbRoutes.findIndex((r) => !('kind' in r) && r.model === modelName);
     if (idx !== -1) return `Fallback ${idx + 1}`;
     return null;
   };

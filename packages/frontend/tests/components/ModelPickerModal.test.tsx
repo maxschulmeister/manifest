@@ -398,6 +398,30 @@ describe('ModelPickerModal', () => {
     expect(container.textContent).toContain('API Keys');
   });
 
+  it('shows the Tiers tab when header tier options exist with only one auth category', () => {
+    const { container } = render(() => (
+      <ModelPickerModal
+        tierId="coding"
+        models={baseModels}
+        tiers={[]}
+        connectedProviders={apiKeyOnly}
+        headerTierOptions={[
+          {
+            id: 'ht-fast',
+            name: 'Fast lane',
+            route: { provider: 'openai', authType: 'api_key', model: 'gpt-4o' },
+            fallback_routes: null,
+          },
+        ]}
+        onSelect={vi.fn()}
+        onSelectHeaderTier={vi.fn()}
+        onClose={vi.fn()}
+      />
+    ));
+    expect(container.querySelector('.panel__tabs')).not.toBeNull();
+    expect(container.textContent).toContain('Tiers');
+  });
+
   it('defaults to the subscription tab when subscription is connected', () => {
     const { container } = render(() => (
       <ModelPickerModal

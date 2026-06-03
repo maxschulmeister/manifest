@@ -2,6 +2,7 @@ import { Entity, Column, PrimaryColumn, Index } from 'typeorm';
 import type {
   FallbackRouteTarget,
   ModelRoute,
+  RouteTarget,
   ResponseMode,
   OutputModality,
 } from 'manifest-shared';
@@ -23,7 +24,7 @@ export class TierAssignment {
   tier!: string;
 
   @Column('jsonb', { nullable: true })
-  override_route!: ModelRoute | null;
+  override_route!: RouteTarget | null;
 
   @Column('jsonb', { nullable: true })
   auto_assigned_route!: ModelRoute | null;

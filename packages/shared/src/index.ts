@@ -42,6 +42,8 @@ export {
   isModelRoute,
   isModelRouteArray,
   isHeaderTierFallbackRef,
+  isHeaderTierRouteTarget,
+  isRouteTarget,
   isFallbackRouteTarget,
   isFallbackRouteTargetArray,
   legacyToRoute,
@@ -50,6 +52,8 @@ export {
 export type {
   ModelRoute,
   HeaderTierFallbackRef,
+  HeaderTierRouteTarget,
+  RouteTarget,
   FallbackRouteTarget,
   LegacyOverrideTriple,
 } from './model-route';

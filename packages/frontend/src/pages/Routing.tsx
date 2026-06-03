@@ -29,6 +29,7 @@ import {
   getSpecificityAssignments,
   setSpecificityResponseMode,
   overrideSpecificity,
+  overrideSpecificityWithHeaderTier,
   resetSpecificity,
   refreshModels,
   getPricingHealth,
@@ -416,6 +417,18 @@ const Routing: Component = () => {
     }
   };
 
+  const handleSpecificityHeaderTierOverride = async (category: string, headerTierId: string) => {
+    setChangingSpecificity(category);
+    try {
+      await overrideSpecificityWithHeaderTier(agentName(), category, headerTierId);
+      await refetchSpecificity();
+    } catch {
+      toast.error('Failed to update specificity model');
+    } finally {
+      setChangingSpecificity(null);
+    }
+  };
+
   /**
    * Pin a task-specific (specificity) tier to a labeled provider key.
    * Re-uses the same PUT endpoint as `handleSpecificityOverride` — the
@@ -429,8 +442,8 @@ const Routing: Component = () => {
   ) => {
     const assignment = specificityAssignments()?.find((a) => a.category === category);
     const effective = assignment?.override_route ?? assignment?.auto_assigned_route ?? null;
-    const model = effective?.model;
-    if (!assignment || !model || !provider) return;
+    const model = effective && !('kind' in effective) ? effective.model : undefined;
+    if (!assignment || !model || !provider || !effective || 'kind' in effective) return;
     setChangingSpecificity(category);
     try {
       await overrideSpecificity(
@@ -585,6 +598,7 @@ const Routing: Component = () => {
                   addingFallback={actions.addingFallback}
                   onDropdownOpen={(tierId) => setDropdownTier(tierId)}
                   onOverride={handleOverride}
+                  onHeaderTierOverride={actions.handleHeaderTierOverride}
                   onPinKey={actions.handlePinKey}
                   onReset={actions.handleReset}
                   onFallbackUpdate={actions.handleFallbackUpdate}
@@ -622,6 +636,7 @@ const Routing: Component = () => {
                   addingFallback={() => null}
                   onDropdownOpen={(category) => setSpecificityDropdown(category)}
                   onOverride={handleSpecificityOverride}
+                  onHeaderTierOverride={handleSpecificityHeaderTierOverride}
                   onPinKey={handleSpecificityPinKey}
                   onReset={async (category) => {
                     setResettingSpecificity(category);
@@ -752,6 +767,14 @@ const Routing: Component = () => {
         onSpecificityOverride={(category, model, provider, authType) => {
           setSpecificityDropdown(null);
           void handleSpecificityOverride(category, model, provider, authType);
+        }}
+        onHeaderTierOverride={(tierId, headerTierId) => {
+          setDropdownTier(null);
+          void actions.handleHeaderTierOverride(tierId, headerTierId);
+        }}
+        onSpecificityHeaderTierOverride={(category, headerTierId) => {
+          setSpecificityDropdown(null);
+          void handleSpecificityHeaderTierOverride(category, headerTierId);
         }}
         fallbackPickerTier={fallbackPickerTier}
         onFallbackPickerClose={() => setFallbackPickerTier(null)}

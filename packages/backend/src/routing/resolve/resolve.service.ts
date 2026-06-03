@@ -9,7 +9,7 @@ import { SpecificityPenaltyService } from '../routing-core/specificity-penalty.s
 import { HeaderTierService } from '../header-tiers/header-tier.service';
 import { ModelPricingCacheService } from '../../model-prices/model-pricing-cache.service';
 import { ModelDiscoveryService } from '../../model-discovery/model-discovery.service';
-import { readOverrideRoute } from '../routing-core/route-helpers';
+import { readOverrideRoute, readOverrideTarget } from '../routing-core/route-helpers';
 import { effectiveRoutesForResponseMode } from '../routing-core/response-mode-guard';
 import { scoreRequest, ScorerInput, MomentumInput, scanMessages } from '../../scoring';
 import { ResolveResponse } from '../dto/resolve-response';
@@ -19,6 +19,7 @@ import {
   DEFAULT_RESPONSE_MODE,
   DEFAULT_OUTPUT_MODALITY,
   isFallbackRouteTargetArray,
+  isHeaderTierRouteTarget,
   isModelRoute,
 } from 'manifest-shared';
 import type {
@@ -44,6 +45,11 @@ import type { SpecificityAssignment } from '../../entities/specificity-assignmen
  * (keyword + URL, keyword + tool) still pass.
  */
 const MIN_SPECIFICITY_CONFIDENCE = 0.4;
+
+interface ResolvedRouteChain {
+  primaryRoute: ModelRoute | null;
+  fallbackRoutes: ModelRoute[] | null;
+}
 
 @Injectable()
 export class ResolveService {
@@ -112,13 +118,20 @@ export class ResolveService {
 
     const outputModality = outputModalityFor(assignment);
     const responseMode = responseModeFor(assignment);
-    const fallbackRoutes = await this.resolveFallbackTargets(agentId, assignment.fallback_routes);
-    const route = await this.buildResolvedRoute(agentId, assignment);
-    const effectiveRoutes = effectiveRoutesForResponseMode(responseMode, route, fallbackRoutes);
+    const assignmentFallbackRoutes = await this.resolveFallbackTargets(
+      agentId,
+      assignment.fallback_routes,
+    );
+    const routeChain = await this.buildResolvedRouteChain(agentId, assignment);
+    const effectiveRoutes = effectiveRoutesForResponseMode(
+      responseMode,
+      routeChain.primaryRoute,
+      concatRoutes(routeChain.fallbackRoutes, assignmentFallbackRoutes),
+    );
     if (!effectiveRoutes.primaryRoute) {
       this.logger.warn(
         `No route resolved for agent=${agentId} tier=${result.tier} ` +
-          `(override=${assignment.override_route?.model ?? 'null'} ` +
+          `(override=${routeTargetLabel(assignment.override_route)} ` +
           `auto=${assignment.auto_assigned_route?.model ?? 'null'})`,
       );
       return {
@@ -168,9 +181,16 @@ export class ResolveService {
 
     const outputModality = outputModalityFor(assignment);
     const responseMode = responseModeFor(assignment);
-    const fallbackRoutes = await this.resolveFallbackTargets(agentId, assignment.fallback_routes);
-    const route = await this.buildResolvedRoute(agentId, assignment);
-    const effectiveRoutes = effectiveRoutesForResponseMode(responseMode, route, fallbackRoutes);
+    const assignmentFallbackRoutes = await this.resolveFallbackTargets(
+      agentId,
+      assignment.fallback_routes,
+    );
+    const routeChain = await this.buildResolvedRouteChain(agentId, assignment);
+    const effectiveRoutes = effectiveRoutesForResponseMode(
+      responseMode,
+      routeChain.primaryRoute,
+      concatRoutes(routeChain.fallbackRoutes, assignmentFallbackRoutes),
+    );
     return {
       tier,
       route: effectiveRoutes.primaryRoute,
@@ -251,11 +271,18 @@ export class ResolveService {
       };
     }
 
-    const route = await this.buildResolvedRoute(agentId, assignment);
+    const routeChain = await this.buildResolvedRouteChain(agentId, assignment);
     const outputModality = outputModalityFor(assignment);
     const responseMode = responseModeFor(assignment);
-    const fallbackRoutes = await this.resolveFallbackTargets(agentId, assignment.fallback_routes);
-    const effectiveRoutes = effectiveRoutesForResponseMode(responseMode, route, fallbackRoutes);
+    const assignmentFallbackRoutes = await this.resolveFallbackTargets(
+      agentId,
+      assignment.fallback_routes,
+    );
+    const effectiveRoutes = effectiveRoutesForResponseMode(
+      responseMode,
+      routeChain.primaryRoute,
+      concatRoutes(routeChain.fallbackRoutes, assignmentFallbackRoutes),
+    );
 
     return {
       tier: 'standard',
@@ -360,35 +387,22 @@ export class ResolveService {
     const assignment = active.find((a) => a.category === detected.category);
     if (!assignment) return null;
 
-    const overrideRoute = readOverrideRoute(assignment);
-    let route: ModelRoute | null;
-    if (overrideRoute) {
-      // Validate the override still points to an available model. An orphaned
-      // override (e.g. a deleted custom provider) returns null so resolve()
-      // falls through to tier-based routing instead of pinning every matching
-      // request to a dead provider (#1603).
-      if (!(await this.providerKeyService.isModelAvailable(agentId, overrideRoute.model))) {
-        this.logger.warn(
-          `Specificity override ${overrideRoute.model} is unavailable ` +
-            `for agent=${agentId}; falling through to tier routing`,
-        );
-        return null;
-      }
-      route = overrideRoute;
-    } else if (assignment.auto_assigned_route) {
-      route = assignment.auto_assigned_route;
-    } else {
-      return null;
-    }
+    const routeChain = await this.buildResolvedRouteChain(agentId, assignment, {
+      unavailableOverride: 'null',
+      logLabel: 'Specificity override',
+    });
+    if (!routeChain.primaryRoute) return null;
 
     const outputModality = outputModalityFor(assignment);
     const responseMode = responseModeFor(assignment);
-    const fallbackRoutes = await this.resolveFallbackTargets(agentId, assignment.fallback_routes);
-    const enrichedRoute = await this.enrichRouteKeyLabel(agentId, route);
+    const assignmentFallbackRoutes = await this.resolveFallbackTargets(
+      agentId,
+      assignment.fallback_routes,
+    );
     const effectiveRoutes = effectiveRoutesForResponseMode(
       responseMode,
-      enrichedRoute,
-      fallbackRoutes,
+      routeChain.primaryRoute,
+      concatRoutes(routeChain.fallbackRoutes, assignmentFallbackRoutes),
     );
 
     return {
@@ -427,38 +441,90 @@ export class ResolveService {
     agentId: string,
     headerTierId: string,
   ): Promise<ModelRoute[] | null> {
+    const chain = await this.resolveHeaderTierChain(agentId, headerTierId, false);
+    if (!chain?.primaryRoute) return null;
+    return chain.fallbackRoutes
+      ? [chain.primaryRoute, ...chain.fallbackRoutes]
+      : [chain.primaryRoute];
+  }
+
+  private async resolveHeaderTierPrimary(
+    agentId: string,
+    headerTierId: string,
+  ): Promise<ResolvedRouteChain | null> {
+    return this.resolveHeaderTierChain(agentId, headerTierId, true);
+  }
+
+  private async resolveHeaderTierChain(
+    agentId: string,
+    headerTierId: string,
+    requireAvailablePrimary: boolean,
+  ): Promise<ResolvedRouteChain | null> {
     const tiers = await this.headerTierService.list(agentId);
     const tier = tiers.find((t) => t.id === headerTierId && t.enabled);
     const override = tier ? readOverrideRoute(tier) : null;
     if (!tier || !override) return null;
+    if (
+      requireAvailablePrimary &&
+      !(await this.providerKeyService.isModelAvailable(agentId, override.model))
+    ) {
+      return null;
+    }
 
     const route = await this.enrichRouteKeyLabel(agentId, override);
     const fallbackRoutes = await this.resolveFallbackTargets(agentId, tier.fallback_routes);
-    return fallbackRoutes ? [route, ...fallbackRoutes] : [route];
+    return { primaryRoute: route, fallbackRoutes };
   }
 
   /**
-   * Build the resolved route for a tier assignment. Validates the override
-   * still points to an available model; falls through to auto-assigned when
-   * the override is orphaned. Enriches with the default key label when no
-   * explicit pin is present.
+   * Build the resolved route chain for a tier assignment. Header-tier primary
+   * targets expand to their own primary route plus custom-tier fallbacks;
+   * assignment-level fallbacks are appended by the caller.
    */
-  private async buildResolvedRoute(
+  private async buildResolvedRouteChain(
     agentId: string,
     assignment: TierAssignment | SpecificityAssignment,
-  ): Promise<ModelRoute | null> {
-    const override = readOverrideRoute(assignment);
+    options: { unavailableOverride?: 'auto' | 'null'; logLabel?: string } = {},
+  ): Promise<ResolvedRouteChain> {
+    const override = readOverrideTarget(assignment);
     if (override) {
-      if (await this.providerKeyService.isModelAvailable(agentId, override.model)) {
-        return this.enrichRouteKeyLabel(agentId, override);
+      if (isModelRoute(override)) {
+        if (await this.providerKeyService.isModelAvailable(agentId, override.model)) {
+          return {
+            primaryRoute: await this.enrichRouteKeyLabel(agentId, override),
+            fallbackRoutes: null,
+          };
+        }
+        this.logger.warn(
+          `${options.logLabel ?? 'Override'} ${override.model} unavailable for agent=${agentId} — ` +
+            (options.unavailableOverride === 'null'
+              ? 'falling through to tier routing'
+              : 'falling back to auto'),
+        );
+        if (options.unavailableOverride === 'null') {
+          return { primaryRoute: null, fallbackRoutes: null };
+        }
+      } else if (isHeaderTierRouteTarget(override)) {
+        const expanded = await this.resolveHeaderTierPrimary(agentId, override.id);
+        if (expanded) return expanded;
+        this.logger.warn(
+          `${options.logLabel ?? 'Override'} header tier ${override.id} unavailable for agent=${agentId} — ` +
+            (options.unavailableOverride === 'null'
+              ? 'falling through to tier routing'
+              : 'falling back to auto'),
+        );
+        if (options.unavailableOverride === 'null') {
+          return { primaryRoute: null, fallbackRoutes: null };
+        }
       }
-      this.logger.warn(
-        `Override ${override.model} unavailable for agent=${agentId} — falling back to auto`,
-      );
     }
+
     return assignment.auto_assigned_route
-      ? this.enrichRouteKeyLabel(agentId, assignment.auto_assigned_route)
-      : null;
+      ? {
+          primaryRoute: await this.enrichRouteKeyLabel(agentId, assignment.auto_assigned_route),
+          fallbackRoutes: null,
+        }
+      : { primaryRoute: null, fallbackRoutes: null };
   }
 
   /**
@@ -518,4 +584,18 @@ function outputModalityFor(row: { output_modality?: OutputModality | null }): Ou
 
 function responseModeFor(row: { response_mode?: ResponseMode | null }): ResponseMode {
   return row.response_mode ?? DEFAULT_RESPONSE_MODE;
+}
+
+function concatRoutes(
+  first: ModelRoute[] | null | undefined,
+  second: ModelRoute[] | null | undefined,
+): ModelRoute[] | null {
+  const routes = [...(first ?? []), ...(second ?? [])];
+  return routes.length > 0 ? routes : null;
+}
+
+function routeTargetLabel(target: unknown): string {
+  if (isModelRoute(target)) return target.model;
+  if (isHeaderTierRouteTarget(target)) return `header_tier:${target.id}`;
+  return 'null';
 }

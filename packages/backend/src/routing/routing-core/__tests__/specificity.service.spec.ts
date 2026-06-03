@@ -171,6 +171,41 @@ describe('SpecificityService', () => {
       expect(routingCache.invalidateAgent).toHaveBeenCalledWith('agent-1');
     });
 
+    it('saves a header-tier primary override and removes the matching header fallback', async () => {
+      const existing = {
+        category: 'coding',
+        is_active: false,
+        override_route: null,
+        fallback_routes: [
+          { kind: 'header_tier' as const, id: 'fast-tier' },
+          route('anthropic', 'api_key', 'claude'),
+        ],
+      } as unknown as SpecificityAssignment;
+      repo.findOne.mockResolvedValue(existing);
+      headerTierRepo.findOne.mockResolvedValue({
+        id: 'fast-tier',
+        enabled: true,
+        override_route: route('openai', 'api_key', 'gpt-4o'),
+        fallback_routes: [route('openai', 'api_key', 'gpt-4o-mini')],
+      } as HeaderTier);
+
+      const result = await svc.setOverride(
+        'agent-1',
+        'user-1',
+        'coding',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { kind: 'header_tier', id: 'fast-tier' },
+      );
+
+      expect(result.override_route).toEqual({ kind: 'header_tier', id: 'fast-tier' });
+      expect(result.fallback_routes).toEqual([route('anthropic', 'api_key', 'claude')]);
+      expect(result.is_active).toBe(true);
+      expect(repo.save).toHaveBeenCalledWith(existing);
+    });
+
     it('falls back to discovery resolution when no explicit triple is passed', async () => {
       discoveryService.getModelsForAgent.mockResolvedValue([
         discovered('gpt-4o', 'openai', 'api_key'),

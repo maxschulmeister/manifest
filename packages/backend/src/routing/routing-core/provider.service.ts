@@ -652,7 +652,7 @@ export class ProviderService {
     const tiersToSave: TierAssignment[] = [];
     for (const tier of allTiers) {
       let mutated = false;
-      if (tier.override_route && routeBelongs(tier.override_route)) {
+      if (isModelRoute(tier.override_route) && routeBelongs(tier.override_route)) {
         invalidated.push({ tier: tier.tier, modelName: tier.override_route.model });
         tier.override_route = null;
         mutated = true;
@@ -678,7 +678,7 @@ export class ProviderService {
     const specToSave: SpecificityAssignment[] = [];
     for (const row of specificityRows) {
       let changed = false;
-      if (row.override_route && routeBelongs(row.override_route)) {
+      if (isModelRoute(row.override_route) && routeBelongs(row.override_route)) {
         row.override_route = null;
         changed = true;
       }
@@ -738,8 +738,8 @@ export class ProviderService {
     const now = new Date().toISOString();
     for (const t of tiers) {
       let mutated = false;
-      if (routeMatchesKey(t.override_route)) {
-        t.override_route = replaceKeyLabel(t.override_route!);
+      if (isModelRoute(t.override_route) && routeMatchesKey(t.override_route)) {
+        t.override_route = replaceKeyLabel(t.override_route);
         mutated = true;
       }
       if (
@@ -766,8 +766,8 @@ export class ProviderService {
     const specsToSave: SpecificityAssignment[] = [];
     for (const s of specs) {
       let mutated = false;
-      if (routeMatchesKey(s.override_route)) {
-        s.override_route = replaceKeyLabel(s.override_route!);
+      if (isModelRoute(s.override_route) && routeMatchesKey(s.override_route)) {
+        s.override_route = replaceKeyLabel(s.override_route);
         mutated = true;
       }
       if (

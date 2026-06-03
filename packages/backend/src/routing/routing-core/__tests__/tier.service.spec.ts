@@ -36,7 +36,7 @@ const discovered = (
     authType,
   }) as DiscoveredModel;
 
-interface RepoMock<T> {
+interface RepoMock {
   find: jest.Mock;
   findOne: jest.Mock;
   insert: jest.Mock;
@@ -44,7 +44,7 @@ interface RepoMock<T> {
   update: jest.Mock;
 }
 
-const makeRepo = <T>(): RepoMock<T> => ({
+const makeRepo = (): RepoMock => ({
   find: jest.fn().mockResolvedValue([]),
   findOne: jest.fn().mockResolvedValue(null),
   insert: jest.fn().mockResolvedValue(undefined),
@@ -53,9 +53,9 @@ const makeRepo = <T>(): RepoMock<T> => ({
 });
 
 describe('TierService', () => {
-  let providerRepo: RepoMock<UserProvider>;
-  let tierRepo: RepoMock<TierAssignment>;
-  let headerTierRepo: RepoMock<HeaderTier>;
+  let providerRepo: RepoMock;
+  let tierRepo: RepoMock;
+  let headerTierRepo: RepoMock;
   let autoAssign: jest.Mocked<Pick<TierAutoAssignService, 'recalculate'>>;
   let routingCache: {
     getTiers: jest.Mock;
@@ -67,9 +67,9 @@ describe('TierService', () => {
   let svc: TierService;
 
   beforeEach(() => {
-    providerRepo = makeRepo<UserProvider>();
-    tierRepo = makeRepo<TierAssignment>();
-    headerTierRepo = makeRepo<HeaderTier>();
+    providerRepo = makeRepo();
+    tierRepo = makeRepo();
+    headerTierRepo = makeRepo();
     autoAssign = { recalculate: jest.fn().mockResolvedValue(undefined) };
     routingCache = {
       getTiers: jest.fn().mockReturnValue(null),
@@ -273,6 +273,40 @@ describe('TierService', () => {
       expect(result.fallback_routes).toEqual([route('anthropic', 'api_key', 'claude')]);
       expect(tierRepo.save).toHaveBeenCalledWith(existing);
       expect(routingCache.invalidateAgent).toHaveBeenCalledWith('agent-1');
+    });
+
+    it('saves a header-tier primary override and removes the matching header fallback', async () => {
+      const existing = {
+        agent_id: 'agent-1',
+        tier: 'standard',
+        override_route: null,
+        fallback_routes: [
+          { kind: 'header_tier' as const, id: 'fast-tier' },
+          route('anthropic', 'api_key', 'claude'),
+        ],
+      } as unknown as TierAssignment;
+      tierRepo.findOne.mockResolvedValue(existing);
+      headerTierRepo.findOne.mockResolvedValue({
+        id: 'fast-tier',
+        enabled: true,
+        override_route: route('openai', 'api_key', 'gpt-4o'),
+        fallback_routes: [route('openai', 'api_key', 'gpt-4o-mini')],
+      } as HeaderTier);
+
+      const result = await svc.setOverride(
+        'agent-1',
+        'user-1',
+        'standard',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { kind: 'header_tier', id: 'fast-tier' },
+      );
+
+      expect(result.override_route).toEqual({ kind: 'header_tier', id: 'fast-tier' });
+      expect(result.fallback_routes).toEqual([route('anthropic', 'api_key', 'claude')]);
+      expect(tierRepo.save).toHaveBeenCalledWith(existing);
     });
 
     it('nulls fallback_routes when filtering the matched tuple leaves zero entries', async () => {

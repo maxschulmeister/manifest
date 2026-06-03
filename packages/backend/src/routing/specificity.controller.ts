@@ -59,6 +59,7 @@ export class SpecificityController {
       provider,
       authType,
       providerKeyLabel,
+      body.target,
     );
   }
 

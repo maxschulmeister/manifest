@@ -4,6 +4,7 @@ import type {
   ModelCapability,
   ModelModality,
   ModelRoute,
+  RouteTarget,
   ResponseMode,
   OutputModality,
 } from 'manifest-shared';
@@ -15,6 +16,7 @@ export type {
   ModelCapability,
   ModelModality,
   ModelRoute,
+  RouteTarget,
   ResponseMode,
   OutputModality,
 };
@@ -203,7 +205,7 @@ export interface TierAssignment {
   id: string;
   agent_id: string;
   tier: string;
-  override_route: ModelRoute | null;
+  override_route: RouteTarget | null;
   auto_assigned_route: ModelRoute | null;
   fallback_routes: FallbackRouteTarget[] | null;
   output_modality?: OutputModality;
@@ -241,6 +243,17 @@ export function overrideTier(
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+  });
+}
+
+export function overrideTierWithHeaderTier(agentName: string, tier: string, headerTierId: string) {
+  return fetchMutate<TierAssignment>(routingPath(agentName, `tiers/${encodeURIComponent(tier)}`), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      target: { kind: 'header_tier', id: headerTierId },
+      model: headerTierId,
+    }),
   });
 }
 

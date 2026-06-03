@@ -2,6 +2,7 @@ import { createSignal, type Accessor, type Setter } from 'solid-js';
 import { toast } from '../services/toast-store.js';
 import {
   overrideTier,
+  overrideTierWithHeaderTier,
   resetTier,
   resetAllTiers,
   setFallbacks,
@@ -68,19 +69,23 @@ export function createRoutingActions(input: RoutingActionsInput) {
       const routes = updated.fallback_routes ?? [];
       if (routes.length > 0) {
         const primary = updated.override_route ?? null;
-        const cleanedRoutes = primary
-          ? routes.filter(
-              (r) =>
-                !(
-                  r.model === primary.model &&
-                  r.provider.toLowerCase() === primary.provider.toLowerCase() &&
-                  r.authType === primary.authType &&
-                  (r.keyLabel ?? null) === (primary.keyLabel ?? null)
-                ),
-            )
-          : routes;
+        const cleanedRoutes =
+          primary && !('kind' in primary)
+            ? routes.filter(
+                (r) =>
+                  'kind' in r ||
+                  !(
+                    r.model === primary.model &&
+                    r.provider.toLowerCase() === primary.provider.toLowerCase() &&
+                    r.authType === primary.authType &&
+                    (r.keyLabel ?? null) === (primary.keyLabel ?? null)
+                  ),
+              )
+            : routes;
         if (cleanedRoutes.length < routes.length) {
-          const cleanedModels = cleanedRoutes.map((r) => r.model);
+          const cleanedModels = cleanedRoutes.map((r) =>
+            'kind' in r && r.kind === 'header_tier' ? r.id : r.model,
+          );
           const persistedRoutes = await setFallbacks(
             input.agentName(),
             tierId,
@@ -107,6 +112,19 @@ export function createRoutingActions(input: RoutingActionsInput) {
    * tiers in `auto` mode have a null override_route, and the DTO requires a
    * non-empty provider value.
    */
+  const handleHeaderTierOverride = async (tierId: string, headerTierId: string) => {
+    setChangingTier(tierId);
+    try {
+      const updated = await overrideTierWithHeaderTier(input.agentName(), tierId, headerTierId);
+      input.mutateTiers((prev) => prev?.map((t) => (t.tier === tierId ? updated : t)));
+      toast.success('Routing updated');
+    } catch {
+      // error toast from fetchMutate
+    } finally {
+      setChangingTier(null);
+    }
+  };
+
   const handlePinKey = async (
     tierId: string,
     providerId: string,
@@ -115,8 +133,8 @@ export function createRoutingActions(input: RoutingActionsInput) {
   ) => {
     const tier = getTier(tierId);
     const effective = tier?.override_route ?? tier?.auto_assigned_route ?? null;
-    const model = effective?.model;
-    if (!tier || !model || !providerId) return;
+    const model = effective && !('kind' in effective) ? effective.model : undefined;
+    if (!tier || !model || !providerId || !effective || 'kind' in effective) return;
     setChangingTier(tierId);
     try {
       const updated = await overrideTier(
@@ -204,6 +222,7 @@ export function createRoutingActions(input: RoutingActionsInput) {
     // allowed — the primary blocks one slot, fallbacks can fill the rest.
     const isDuplicate = currentRoutes.some(
       (r) =>
+        !('kind' in r) &&
         r.provider.toLowerCase() === newRoute.provider.toLowerCase() &&
         r.authType === newRoute.authType &&
         r.model === newRoute.model &&
@@ -211,7 +230,9 @@ export function createRoutingActions(input: RoutingActionsInput) {
     );
     if (isDuplicate) return;
     const updatedRoutes = [...currentRoutes, newRoute];
-    const updated = updatedRoutes.map((r) => r.model);
+    const updated = updatedRoutes.map((r) =>
+      'kind' in r && r.kind === 'header_tier' ? r.id : r.model,
+    );
     setFallbackOverrides((prev) => ({ ...prev, [tierId]: updated }));
     setAddingFallback(tierId);
     try {
@@ -299,6 +320,7 @@ export function createRoutingActions(input: RoutingActionsInput) {
     getTier,
     getFallbacksFor,
     handleOverride,
+    handleHeaderTierOverride,
     handlePinKey,
     handleResetAll,
     handleReset,

@@ -4,7 +4,7 @@ import type {
   AvailableModel,
   CustomProviderData,
   FallbackRouteTarget,
-  ModelRoute,
+  RouteTarget,
   RequestParamDefaults,
   ResponseMode,
   RoutingProvider,
@@ -26,7 +26,7 @@ export interface RoutingTierModelSlotsProps {
   connectedProviders: RoutingProvider[];
   headerTierOptions?: { id: string; name: string }[];
   primaryModel: Accessor<string | null>;
-  primaryRoute: Accessor<ModelRoute | null>;
+  primaryRoute: Accessor<RouteTarget | null>;
   fallbacks: Accessor<string[]>;
   fallbackRoutes: Accessor<FallbackRouteTarget[] | null>;
   responseMode: Accessor<ResponseMode>;
@@ -41,6 +41,7 @@ export interface RoutingTierModelSlotsProps {
     authType?: AuthType,
     keyLabel?: string,
   ) => Promise<void>;
+  onPrimaryHeaderTierOverride?: (headerTierId: string) => Promise<void> | void;
   persistFallbacks: (
     agentName: string,
     tier: string,
@@ -93,10 +94,11 @@ const RoutingTierModelSlots: Component<RoutingTierModelSlotsProps> = (props) => 
     getFallbackRoutes: props.fallbackRoutes,
     onFallbackUpdate: (fallbacks, routes) => props.onFallbackUpdate(fallbacks, routes),
     onPrimaryOverride: props.onPrimaryOverride,
+    onPrimaryHeaderTierOverride: props.onPrimaryHeaderTierOverride,
     persistFallbacks: props.persistFallbacks,
     resolveProviderForModel: (model) => {
       const route = props.primaryRoute();
-      if (route?.model === model && route.provider) {
+      if (route && !('kind' in route) && route.model === model && route.provider) {
         return route.provider.toLowerCase();
       }
       return providerIdForModel(model, props.models);
@@ -105,6 +107,13 @@ const RoutingTierModelSlots: Component<RoutingTierModelSlotsProps> = (props) => 
 
   const isSwapping = () =>
     dragDrop.swappingFbIndex() !== null || (props.showSwappingSkeleton?.() ?? false);
+
+  const primaryHeaderTier = () => {
+    const route = props.primaryRoute();
+    return route && 'kind' in route && route.kind === 'header_tier'
+      ? props.headerTiers?.find((tier) => tier.id === route.id)
+      : undefined;
+  };
 
   return (
     <>
@@ -138,6 +147,7 @@ const RoutingTierModelSlots: Component<RoutingTierModelSlotsProps> = (props) => 
                     'routing-card__model-chip--dragging': dragDrop.primaryDragging(),
                     'routing-card__model-chip--drop-target': dragDrop.primaryDropTarget(),
                     'routing-card__model-chip--skipped': props.primarySkipped(),
+                    'routing-card__model-chip--header-tier': !!primaryHeaderTier(),
                   }}
                   title={props.primarySkipped() ? 'Skipped while Stream mode is active' : undefined}
                   draggable={true}
@@ -151,13 +161,38 @@ const RoutingTierModelSlots: Component<RoutingTierModelSlotsProps> = (props) => 
                   <div class="routing-card__chip-main">
                     <div style="display: flex; align-items: center; gap: 6px; min-width: 0;">
                       <div class="routing-card__override">
-                        <RoutingPrimaryProviderIcon
-                          providerId={provId}
-                          modelName={modelName}
-                          customProviders={props.customProviders}
-                          effectiveAuth={props.effectiveAuthForPrimary}
-                        />
-                        <span class="routing-card__main">{props.primaryLabel(modelName())}</span>
+                        <Show
+                          when={primaryHeaderTier()}
+                          fallback={
+                            <RoutingPrimaryProviderIcon
+                              providerId={provId}
+                              modelName={modelName}
+                              customProviders={props.customProviders}
+                              effectiveAuth={props.effectiveAuthForPrimary}
+                            />
+                          }
+                        >
+                          <span class="routing-card__header-tier-icon" title="Custom tier">
+                            <svg
+                              width="14"
+                              height="14"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2"
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              aria-hidden="true"
+                            >
+                              <path d="M4 6h16" />
+                              <path d="M4 12h16" />
+                              <path d="M4 18h16" />
+                            </svg>
+                          </span>
+                        </Show>
+                        <span class="routing-card__main">
+                          {primaryHeaderTier()?.name ?? props.primaryLabel(modelName())}
+                        </span>
                         {props.renderPrimaryExtension?.(modelName())}
                       </div>
                     </div>
@@ -167,25 +202,34 @@ const RoutingTierModelSlots: Component<RoutingTierModelSlotsProps> = (props) => 
                   </div>
                   <div class="routing-card__chip-footer">
                     <Show
-                      when={props.effectiveAuthForPrimary() !== 'subscription'}
+                      when={!primaryHeaderTier()}
                       fallback={
                         <span class="routing-card__chip-meta">
-                          <span class="routing-card__chip-price">
-                            {formatPerRequestCost(modelInfo(modelName())?.cost_per_request) ??
-                              'Included in subscription'}
+                          <span class="routing-card__chip-price">Custom tier</span>
+                        </span>
+                      }
+                    >
+                      <Show
+                        when={props.effectiveAuthForPrimary() !== 'subscription'}
+                        fallback={
+                          <span class="routing-card__chip-meta">
+                            <span class="routing-card__chip-price">
+                              {formatPerRequestCost(modelInfo(modelName())?.cost_per_request) ??
+                                'Included in subscription'}
+                            </span>
+                            <Show when={props.primarySkipped()}>
+                              <span class="routing-card__skipped-badge">Skipped in Stream</span>
+                            </Show>
                           </span>
+                        }
+                      >
+                        <span class="routing-card__chip-meta">
+                          <span class="routing-card__chip-price">{priceLabel(modelName())}</span>
                           <Show when={props.primarySkipped()}>
                             <span class="routing-card__skipped-badge">Skipped in Stream</span>
                           </Show>
                         </span>
-                      }
-                    >
-                      <span class="routing-card__chip-meta">
-                        <span class="routing-card__chip-price">{priceLabel(modelName())}</span>
-                        <Show when={props.primarySkipped()}>
-                          <span class="routing-card__skipped-badge">Skipped in Stream</span>
-                        </Show>
-                      </span>
+                      </Show>
                     </Show>
                   </div>
                 </div>

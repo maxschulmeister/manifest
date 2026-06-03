@@ -1,5 +1,5 @@
-import type { ModelRoute, AuthType } from 'manifest-shared';
-import { isModelRoute, isModelRouteArray } from 'manifest-shared';
+import type { ModelRoute, AuthType, RouteTarget } from 'manifest-shared';
+import { isModelRoute, isModelRouteArray, isRouteTarget } from 'manifest-shared';
 import type { TierAssignment } from '../../entities/tier-assignment.entity';
 import type { SpecificityAssignment } from '../../entities/specificity-assignment.entity';
 import type { HeaderTier } from '../../entities/header-tier.entity';
@@ -14,6 +14,10 @@ type AnyAutoRow = Pick<TierAssignment | SpecificityAssignment, 'auto_assigned_ro
 
 export function readOverrideRoute(row: AnyOverrideRow): ModelRoute | null {
   return isModelRoute(row.override_route) ? row.override_route : null;
+}
+
+export function readOverrideTarget(row: AnyOverrideRow): RouteTarget | null {
+  return isRouteTarget(row.override_route) ? row.override_route : null;
 }
 
 export function readAutoAssignedRoute(row: AnyAutoRow): ModelRoute | null {

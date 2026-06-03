@@ -6,15 +6,21 @@ import {
   IsBoolean,
   ValidateNested,
   MaxLength,
+  ValidateIf,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { AUTH_TYPES } from 'manifest-shared';
-import { ModelRouteDto, MAX_PROVIDER_KEY_LABEL_LENGTH } from './routing.dto';
+import {
+  HeaderTierFallbackRefDto,
+  ModelRouteDto,
+  MAX_PROVIDER_KEY_LABEL_LENGTH,
+} from './routing.dto';
 
 export class SetSpecificityOverrideDto {
+  @ValidateIf((body) => !body.route && !body.target)
   @IsString()
   @IsNotEmpty()
-  model!: string;
+  model?: string;
 
   @IsOptional()
   @IsString()
@@ -36,6 +42,11 @@ export class SetSpecificityOverrideDto {
   @ValidateNested()
   @Type(() => ModelRouteDto)
   route?: ModelRouteDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => HeaderTierFallbackRefDto)
+  target?: HeaderTierFallbackRefDto;
 }
 
 export class ToggleSpecificityDto {

@@ -15,6 +15,10 @@ vi.mock('../../src/components/ModelPickerModal.js', () => ({
         (m) => `${m.model_name}:${(m as { auth_type?: string }).auth_type ?? ''}`,
       ),
       tiersCount: (props.tiers as { length: number } | undefined)?.length ?? 0,
+      tiersList: ((props.tiers as { tier: string }[] | undefined) ?? []).map((t) => t.tier),
+      headerTierOptionsList: (
+        (props.headerTierOptions as { id: string; name: string }[] | undefined) ?? []
+      ).map((t) => `${t.id}:${t.name}`),
       customProvidersCount: (props.customProviders as { length: number } | undefined)?.length ?? 0,
       connectedProvidersCount:
         (props.connectedProviders as { length: number } | undefined)?.length ?? 0,
@@ -45,6 +49,17 @@ vi.mock('../../src/components/ModelPickerModal.js', () => ({
           onClick={() => (props.onConnectProviders as () => void)?.()}
         >
           connect
+        </button>
+        <button
+          data-testid={`picker-select-header-tier-${props.tierId}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            (
+              props.onSelectHeaderTier as ((id: string, headerTierId: string) => void) | undefined
+            )?.(props.tierId as string, 'ht-fast');
+          }}
+        >
+          select header tier
         </button>
       </div>
     );
@@ -115,6 +130,7 @@ import type {
   RoutingProvider,
   SpecificityAssignment,
 } from '../../src/services/api';
+import type { HeaderTier } from '../../src/services/api/header-tiers';
 
 const sampleModels: AvailableModel[] = [
   {
@@ -187,6 +203,23 @@ const specificityAssignments: SpecificityAssignment[] = [
   },
 ];
 
+const headerTier: HeaderTier = {
+  id: 'ht-fast',
+  agent_id: 'a',
+  name: 'Fast lane',
+  header_key: null,
+  header_value: null,
+  badge_color: 'indigo',
+  sort_order: 0,
+  enabled: true,
+  override_route: { provider: 'openai', authType: 'api_key', model: 'gpt-4o' },
+  fallback_routes: null,
+  response_mode: 'buffered',
+  output_modality: 'text',
+  created_at: '2025-01-01',
+  updated_at: '2025-01-01',
+};
+
 const baseProps = {
   agentName: () => 'demo',
   onDropdownClose: vi.fn(),
@@ -201,9 +234,11 @@ const baseProps = {
   specificityAssignments: () => specificityAssignments,
   customProviders: () => [] as CustomProviderData[],
   connectedProviders: () => [] as RoutingProvider[],
+  headerTiers: () => [],
   getTier: (id: string) => tiers.find((t) => t.tier === id),
   onOverride: vi.fn(),
   onAddFallback: vi.fn(),
+  onAddHeaderTierFallback: vi.fn(),
 };
 
 function makeProps(overrides: Partial<Parameters<typeof RoutingModals>[0]> = {}) {
@@ -279,6 +314,66 @@ describe('RoutingModals', () => {
     expect(onOverride).toHaveBeenCalledWith('simple', 'gpt-4o', 'openai', 'api_key');
   });
 
+  it('passes custom tiers to built-in primary model pickers', () => {
+    render(() => (
+      <RoutingModals
+        {...makeProps({ dropdownTier: () => 'simple', headerTiers: () => [headerTier] })}
+      />
+    ));
+    expect(pickerCalls[0].headerTierOptionsList).toEqual(['ht-fast:Fast lane']);
+  });
+
+  it('uses selected custom tiers as built-in primary routes', () => {
+    const onDropdownClose = vi.fn();
+    const onOverride = vi.fn();
+    const onHeaderTierOverride = vi.fn();
+    const { getByTestId } = render(() => (
+      <RoutingModals
+        {...makeProps({
+          dropdownTier: () => 'simple',
+          headerTiers: () => [headerTier],
+          onDropdownClose,
+          onOverride,
+          onHeaderTierOverride,
+        })}
+      />
+    ));
+    fireEvent.click(getByTestId('picker-select-header-tier-simple'));
+    expect(onDropdownClose).toHaveBeenCalled();
+    expect(onHeaderTierOverride).toHaveBeenCalledWith('simple', 'ht-fast');
+    expect(onOverride).not.toHaveBeenCalled();
+  });
+
+  it('passes custom tiers to specificity primary model pickers', () => {
+    render(() => (
+      <RoutingModals
+        {...makeProps({ specificityDropdown: () => 'coding', headerTiers: () => [headerTier] })}
+      />
+    ));
+    expect(pickerCalls[0].headerTierOptionsList).toEqual(['ht-fast:Fast lane']);
+  });
+
+  it('uses selected custom tiers as specificity primary routes', () => {
+    const onSpecificityDropdownClose = vi.fn();
+    const onSpecificityOverride = vi.fn();
+    const onSpecificityHeaderTierOverride = vi.fn();
+    const { getByTestId } = render(() => (
+      <RoutingModals
+        {...makeProps({
+          specificityDropdown: () => 'coding',
+          headerTiers: () => [headerTier],
+          onSpecificityDropdownClose,
+          onSpecificityOverride,
+          onSpecificityHeaderTierOverride,
+        })}
+      />
+    ));
+    fireEvent.click(getByTestId('picker-select-header-tier-coding'));
+    expect(onSpecificityDropdownClose).toHaveBeenCalled();
+    expect(onSpecificityHeaderTierOverride).toHaveBeenCalledWith('coding', 'ht-fast');
+    expect(onSpecificityOverride).not.toHaveBeenCalled();
+  });
+
   it('opens specificity picker only filtered to active assignments', () => {
     render(() => <RoutingModals {...makeProps({ specificityDropdown: () => 'coding' })} />);
     // 1 active assignment → tiersCount === 1
@@ -350,6 +445,31 @@ describe('RoutingModals', () => {
       ));
       expect(pickerCalls[0].requiredCapability).toBe('stream');
       expect(typeof pickerCalls[0].providerRefreshed).toBe('function');
+    });
+
+    it('uses specificity assignments as the fallback picker tier context for task-specific tiers', () => {
+      render(() => <RoutingModals {...makeProps({ fallbackPickerTier: () => 'coding' })} />);
+      expect(pickerCalls[0].tiersList).toEqual(['coding']);
+    });
+
+    it('lets task-specific fallback pickers select custom header tiers', () => {
+      const onAddHeaderTierFallback = vi.fn();
+      const onFallbackPickerClose = vi.fn();
+      const { getByTestId } = render(() => (
+        <RoutingModals
+          {...makeProps({
+            fallbackPickerTier: () => 'coding',
+            headerTiers: () => [headerTier],
+            onAddHeaderTierFallback,
+            onFallbackPickerClose,
+          })}
+        />
+      ));
+
+      expect(pickerCalls[0].headerTierOptionsList).toEqual(['ht-fast:Fast lane']);
+      fireEvent.click(getByTestId('picker-select-header-tier-coding'));
+      expect(onFallbackPickerClose).toHaveBeenCalled();
+      expect(onAddHeaderTierFallback).toHaveBeenCalledWith('coding', 'ht-fast');
     });
   });
 
@@ -665,5 +785,4 @@ describe('RoutingModals', () => {
       expect(queryByTestId('key-picker-modal')).toBeNull();
     });
   });
-
 });

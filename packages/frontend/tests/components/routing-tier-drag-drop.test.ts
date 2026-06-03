@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createRoutingTierDragDrop } from '../../src/components/routing-tier-drag-drop.js';
-import type { ModelRoute } from '../../src/services/api.js';
+import type { FallbackRouteTarget, ModelRoute } from '../../src/services/api.js';
 
 const mockToastError = vi.fn();
 vi.mock('../../src/services/toast-store.js', () => ({
@@ -21,6 +21,7 @@ describe('createRoutingTierDragDrop', () => {
   let fallbacks: string[];
   let onFallbackUpdate: ReturnType<typeof vi.fn>;
   let onPrimaryOverride: ReturnType<typeof vi.fn>;
+  let onPrimaryHeaderTierOverride: ReturnType<typeof vi.fn>;
   let persistFallbacks: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
@@ -28,6 +29,7 @@ describe('createRoutingTierDragDrop', () => {
     fallbacks = ['claude-3', 'gpt-4o-mini'];
     onFallbackUpdate = vi.fn();
     onPrimaryOverride = vi.fn().mockResolvedValue(undefined);
+    onPrimaryHeaderTierOverride = vi.fn().mockResolvedValue(undefined);
     persistFallbacks = vi.fn().mockResolvedValue(undefined);
   });
 
@@ -41,6 +43,7 @@ describe('createRoutingTierDragDrop', () => {
       getFallbackRoutes: () => fallbackRoutes,
       onFallbackUpdate,
       onPrimaryOverride,
+      onPrimaryHeaderTierOverride,
       persistFallbacks,
       resolveProviderForModel: (model) =>
         model === 'claude-3' ? 'anthropic' : model === 'gpt-4o-mini' ? 'openai' : 'openai',
@@ -74,6 +77,39 @@ describe('createRoutingTierDragDrop', () => {
       'api_key',
       undefined,
     );
+  });
+
+  it('promotes a header-tier fallback to primary on primary drop', async () => {
+    fallbacks = ['ht-fast', 'gpt-4o-mini'];
+    const headerFallbackRoutes: FallbackRouteTarget[] = [
+      { kind: 'header_tier', id: 'ht-fast' },
+      fallbackRoutes[1]!,
+    ];
+    const dnd = createRoutingTierDragDrop({
+      agentName: () => 'agent-1',
+      tierId: () => 'tier-1',
+      getPrimaryModel: () => 'gpt-4o',
+      getPrimaryRoute: () => primaryRoute,
+      getFallbacks: () => fallbacks,
+      getFallbackRoutes: () => headerFallbackRoutes,
+      onFallbackUpdate,
+      onPrimaryOverride,
+      onPrimaryHeaderTierOverride,
+      persistFallbacks,
+      resolveProviderForModel: () => 'openai',
+    });
+
+    dnd.setFallbackDragging(0);
+    dnd.handlePrimaryDrop({ preventDefault: vi.fn() } as unknown as DragEvent);
+
+    await vi.waitFor(() => {
+      expect(onFallbackUpdate).toHaveBeenCalledWith(
+        ['gpt-4o', 'gpt-4o-mini'],
+        [primaryRoute, fallbackRoutes[1]],
+      );
+      expect(onPrimaryHeaderTierOverride).toHaveBeenCalledWith('ht-fast');
+      expect(onPrimaryOverride).not.toHaveBeenCalled();
+    });
   });
 
   it('rolls back optimistic fallback update when persist fails', async () => {

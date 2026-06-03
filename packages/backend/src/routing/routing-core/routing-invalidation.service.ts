@@ -40,7 +40,7 @@ export class RoutingInvalidationService {
 
     for (const tier of allTiers) {
       let mutated = false;
-      if (tier.override_route && removedSet.has(tier.override_route.model)) {
+      if (isModelRoute(tier.override_route) && removedSet.has(tier.override_route.model)) {
         this.logger.warn(
           `Clearing override ${tier.override_route.model} for agent ${tier.agent_id} tier ${tier.tier} (model removed)`,
         );

@@ -795,6 +795,24 @@
   background: hsl(var(--muted) / 0.42);
 }
 
+.routing-card__model-chip--header-tier {
+  border-left: 3px solid #8b5cf6;
+  background: hsl(var(--primary) / 0.08);
+  color: hsl(var(--primary));
+}
+
+.routing-card__model-chip--header-tier:hover {
+  background: hsl(var(--primary) / 0.12);
+}
+
+.routing-card__header-tier-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #8b5cf6;
+}
+
 .routing-card__skipped-badge {
   display: inline-flex;
   align-items: center;

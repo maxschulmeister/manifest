@@ -7,13 +7,21 @@ import {
   DEFAULT_OUTPUT_MODALITY,
   isFallbackRouteTargetArray,
   isHeaderTierFallbackRef,
+  isHeaderTierRouteTarget,
   isModelRoute,
 } from 'manifest-shared';
-import type { AuthType, FallbackRouteTarget, ModelRoute, ResponseMode } from 'manifest-shared';
+import type {
+  AuthType,
+  FallbackRouteTarget,
+  HeaderTierRouteTarget,
+  ModelRoute,
+  ResponseMode,
+  RouteTarget,
+} from 'manifest-shared';
 import { SpecificityAssignment } from '../../entities/specificity-assignment.entity';
 import { ModelDiscoveryService } from '../../model-discovery/model-discovery.service';
 import { RoutingCacheService } from './routing-cache.service';
-import { explicitRoute, unambiguousRoute } from './route-helpers';
+import { explicitRoute, routeMatches, unambiguousRoute } from './route-helpers';
 import { assertStreamableResponseMode } from './response-mode-guard';
 import { HeaderTier } from '../../entities/header-tier.entity';
 
@@ -85,33 +93,37 @@ export class SpecificityService {
     agentId: string,
     userId: string,
     category: string,
-    model: string,
+    model?: string,
     provider?: string,
     authType?: AuthType,
     providerKeyLabel?: string,
+    target?: HeaderTierRouteTarget,
   ): Promise<SpecificityAssignment> {
-    const explicit = explicitRoute(model, provider, authType, providerKeyLabel);
-    const route =
-      explicit ??
-      unambiguousRoute(
-        model,
-        await this.discoveryService.getModelsForAgent(agentId),
-        providerKeyLabel,
-      );
-    if (!route) {
-      throw new BadRequestException(
-        `Model "${model}" is offered by multiple providers — pass an explicit ` +
-          `provider + authType so the route is unambiguous.`,
-      );
-    }
+    const headerTierRoutes = target
+      ? await this.validateHeaderTierOverrideTarget(agentId, target)
+      : null;
+    const route: RouteTarget = target
+      ? { kind: 'header_tier', id: target.id }
+      : await this.resolveModelOverride(agentId, model, provider, authType, providerKeyLabel);
     const existing = await this.repo.findOne({ where: { agent_id: agentId, category } });
 
     if (existing) {
+      if (existing.fallback_routes) {
+        const filtered = existing.fallback_routes.filter((r) =>
+          isHeaderTierRouteTarget(route)
+            ? !(isHeaderTierFallbackRef(r) && r.id === route.id)
+            : !isModelRoute(r) || !routeMatches(r, route),
+        );
+        existing.fallback_routes = filtered.length > 0 ? filtered : null;
+      }
       assertStreamableResponseMode(
         existing.response_mode,
         `task-specific tier "${category}"`,
-        route,
-        modelRoutesOnly(existing.fallback_routes),
+        isModelRoute(route) ? route : (headerTierRoutes?.[0] ?? null),
+        concatModelRoutes(
+          headerTierRoutes?.slice(1) ?? null,
+          await this.routeChainsForTargets(agentId, existing.fallback_routes),
+        ),
       );
       existing.override_route = route;
       existing.is_active = true;
@@ -147,10 +159,78 @@ export class SpecificityService {
           provider,
           authType,
           providerKeyLabel,
+          target,
         );
     }
     this.routingCache.invalidateAgent(agentId);
     return record;
+  }
+
+  private async resolveModelOverride(
+    agentId: string,
+    model: string | undefined,
+    provider?: string,
+    authType?: AuthType,
+    providerKeyLabel?: string,
+  ): Promise<ModelRoute> {
+    if (!model) throw new BadRequestException('Model is required.');
+    const explicit = explicitRoute(model, provider, authType, providerKeyLabel);
+    const route =
+      explicit ??
+      unambiguousRoute(
+        model,
+        await this.discoveryService.getModelsForAgent(agentId),
+        providerKeyLabel,
+      );
+    if (!route) {
+      throw new BadRequestException(
+        `Model "${model}" is offered by multiple providers — pass an explicit ` +
+          `provider + authType so the route is unambiguous.`,
+      );
+    }
+    return route;
+  }
+
+  private async validateHeaderTierOverrideTarget(
+    agentId: string,
+    target: HeaderTierRouteTarget,
+  ): Promise<ModelRoute[]> {
+    if (!isHeaderTierRouteTarget(target)) {
+      throw new BadRequestException('Override target must be a header-tier reference.');
+    }
+    const routes = await this.routeChainForTarget(agentId, target);
+    if (!routes) {
+      throw new BadRequestException(`Header tier override "${target.id}" is not available.`);
+    }
+    return routes;
+  }
+
+  private async routeChainForTarget(
+    agentId: string,
+    target: RouteTarget | null | undefined,
+  ): Promise<ModelRoute[] | null> {
+    if (!target) return null;
+    if (isModelRoute(target)) return [target];
+    if (!isHeaderTierRouteTarget(target)) return null;
+    const match = await this.headerTierRepo.findOne({
+      where: { agent_id: agentId, id: target.id },
+    });
+    if (!match || !match.enabled || !match.override_route) return null;
+    const fallbackRoutes = await this.routeChainsForTargets(agentId, match.fallback_routes);
+    return [match.override_route, ...(fallbackRoutes ?? [])];
+  }
+
+  private async routeChainsForTargets(
+    agentId: string,
+    targets: FallbackRouteTarget[] | null | undefined,
+  ): Promise<ModelRoute[] | null> {
+    if (!targets) return null;
+    const routes: ModelRoute[] = [];
+    for (const target of targets) {
+      const chain = await this.routeChainForTarget(agentId, target);
+      if (chain) routes.push(...chain);
+    }
+    return routes.length > 0 ? routes : null;
   }
 
   async setResponseMode(
@@ -161,11 +241,17 @@ export class SpecificityService {
   ): Promise<SpecificityAssignment> {
     const existing = await this.repo.findOne({ where: { agent_id: agentId, category } });
     if (existing) {
+      const primaryChain =
+        (await this.routeChainForTarget(agentId, existing.override_route)) ??
+        (existing.auto_assigned_route ? [existing.auto_assigned_route] : null);
       assertStreamableResponseMode(
         responseMode,
         `task-specific tier "${category}"`,
-        existing.override_route ?? existing.auto_assigned_route,
-        modelRoutesOnly(existing.fallback_routes),
+        primaryChain?.[0] ?? null,
+        concatModelRoutes(
+          primaryChain?.slice(1) ?? null,
+          await this.routeChainsForTargets(agentId, existing.fallback_routes),
+        ),
       );
       existing.response_mode = responseMode;
       existing.updated_at = new Date().toISOString();
@@ -221,11 +307,17 @@ export class SpecificityService {
     const fallbackRoutes = targets
       ? await this.validateFallbackTargets(agentId, targets)
       : await this.buildFallbackRoutes(agentId, models, routes);
+    const primaryChain =
+      (await this.routeChainForTarget(agentId, existing.override_route)) ??
+      (existing.auto_assigned_route ? [existing.auto_assigned_route] : null);
     assertStreamableResponseMode(
       existing.response_mode,
       `task-specific tier "${category}"`,
-      existing.override_route ?? existing.auto_assigned_route,
-      modelRoutesOnly(fallbackRoutes),
+      primaryChain?.[0] ?? null,
+      concatModelRoutes(
+        primaryChain?.slice(1) ?? null,
+        await this.routeChainsForTargets(agentId, fallbackRoutes),
+      ),
     );
     existing.fallback_routes = fallbackRoutes;
     existing.updated_at = new Date().toISOString();
@@ -237,11 +329,14 @@ export class SpecificityService {
   async clearFallbacks(agentId: string, category: string): Promise<void> {
     const existing = await this.repo.findOne({ where: { agent_id: agentId, category } });
     if (!existing) return;
+    const primaryChain =
+      (await this.routeChainForTarget(agentId, existing.override_route)) ??
+      (existing.auto_assigned_route ? [existing.auto_assigned_route] : null);
     assertStreamableResponseMode(
       existing.response_mode,
       `task-specific tier "${category}"`,
-      existing.override_route ?? existing.auto_assigned_route,
-      null,
+      primaryChain?.[0] ?? null,
+      primaryChain?.slice(1) ?? null,
     );
     existing.fallback_routes = null;
     existing.updated_at = new Date().toISOString();
@@ -323,8 +418,10 @@ export class SpecificityService {
   }
 }
 
-function modelRoutesOnly(targets: FallbackRouteTarget[] | null | undefined): ModelRoute[] | null {
-  if (!targets) return null;
-  const routes = targets.filter(isModelRoute);
+function concatModelRoutes(
+  first: ModelRoute[] | null | undefined,
+  second: ModelRoute[] | null | undefined,
+): ModelRoute[] | null {
+  const routes = [...(first ?? []), ...(second ?? [])];
   return routes.length > 0 ? routes : null;
 }

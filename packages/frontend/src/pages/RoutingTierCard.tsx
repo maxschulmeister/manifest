@@ -20,7 +20,7 @@ import type {
   AvailableModel,
   AuthType,
   FallbackRouteTarget,
-  ModelRoute,
+  RouteTarget,
   RequestParamDefaults,
   RoutingProvider,
   CustomProviderData,
@@ -48,6 +48,7 @@ export interface RoutingTierCardProps {
     authType?: AuthType,
     providerKeyLabel?: string,
   ) => void;
+  onHeaderTierOverride?: (tierId: string, headerTierId: string) => void | Promise<void>;
   onPinKey?: (
     tierId: string,
     providerId: string,
@@ -96,12 +97,14 @@ export interface RoutingTierCardProps {
   headerTiers?: () => HeaderTier[];
 }
 
-const effectiveRoute = (
-  t: TierAssignment,
-): { provider: string; authType: AuthType; model: string } | null =>
+const effectiveRoute = (t: TierAssignment): RouteTarget | null =>
   t.override_route ?? t.auto_assigned_route;
 
-const effectiveModel = (t: TierAssignment): string | null => effectiveRoute(t)?.model ?? null;
+const effectiveModel = (t: TierAssignment): string | null => {
+  const route = effectiveRoute(t);
+  if (!route) return null;
+  return 'kind' in route ? route.id : route.model;
+};
 
 const RoutingTierCard: Component<RoutingTierCardProps> = (props) => {
   const eff = () => {
@@ -109,8 +112,8 @@ const RoutingTierCard: Component<RoutingTierCardProps> = (props) => {
     return t ? effectiveModel(t) : null;
   };
   const manualProviderId = () => {
-    const t = props.tier();
-    return t?.override_route?.provider;
+    const route = props.tier()?.override_route;
+    return route && !('kind' in route) ? route.provider : undefined;
   };
   const isManual = () => props.tier()?.override_route != null;
   const hasFallbacks = () => (props.tier()?.fallback_routes ?? []).length > 0;
@@ -219,13 +222,15 @@ const RoutingTierCard: Component<RoutingTierCardProps> = (props) => {
           fallbackRoutes={() => props.tier()?.fallback_routes ?? null}
           responseMode={() => props.tier()?.response_mode ?? 'buffered'}
           providerIdForPrimary={() => {
+            const route = primaryRoute();
+            if (route && 'kind' in route) return undefined;
             const m = eff();
             if (!m) return undefined;
             return manualProviderId() ?? providerIdForModel(m, props.models());
           }}
           effectiveAuthForPrimary={() => {
             const route = primaryRoute();
-            if (route?.authType) return route.authType;
+            if (route && !('kind' in route) && route.authType) return route.authType;
             const id =
               manualProviderId() ??
               (eff() ? providerIdForModel(eff()!, props.models()) : undefined);
@@ -239,6 +244,8 @@ const RoutingTierCard: Component<RoutingTierCardProps> = (props) => {
           }}
           primaryLabel={labelFor}
           primarySkipped={() => {
+            const route = primaryRoute();
+            if (route && 'kind' in route) return false;
             const m = eff();
             return !!m && isStreamMode() && !(modelCapabilities(m)?.includes('stream') ?? false);
           }}
@@ -247,6 +254,9 @@ const RoutingTierCard: Component<RoutingTierCardProps> = (props) => {
           }
           onPrimaryOverride={(model, provider, authType, keyLabel) =>
             props.onOverride(props.stage.id, model, provider, authType, keyLabel)
+          }
+          onPrimaryHeaderTierOverride={(headerTierId) =>
+            props.onHeaderTierOverride?.(props.stage.id, headerTierId)
           }
           persistFallbacks={props.persistFallbacks ?? setFallbacksApi}
           persistClearFallbacks={props.persistClearFallbacks}
@@ -266,9 +276,13 @@ const RoutingTierCard: Component<RoutingTierCardProps> = (props) => {
           renderPrimaryActions={(modelName) => {
             const provId = () =>
               manualProviderId() ?? providerIdForModel(modelName, props.models());
+            const isHeaderPrimary = () => {
+              const route = primaryRoute();
+              return !!route && 'kind' in route;
+            };
             const effectiveAuth = (): AuthType | null => {
               const route = primaryRoute();
-              if (route?.authType) return route.authType;
+              if (route && !('kind' in route) && route.authType) return route.authType;
               const id = provId();
               if (!id) return null;
               const provs = props
@@ -280,21 +294,30 @@ const RoutingTierCard: Component<RoutingTierCardProps> = (props) => {
             };
             return (
               <>
-                <PrimaryKeyChip
-                  tier={props.tier}
-                  provId={provId}
-                  effectiveAuth={effectiveAuth}
-                  connectedProviders={props.connectedProviders}
-                  modelLabel={labelFor(modelName)}
-                  modelName={() => modelName}
-                  onPinKey={(label) => {
-                    const id = provId();
-                    if (!id) return;
-                    props.onPinKey?.(props.stage.id, id, label, effectiveAuth() ?? undefined);
-                  }}
-                  disabled={() => props.changingTier() === props.stage.id}
-                />
-                <Show when={props.setModelParams && props.getModelParams && effectiveAuth()}>
+                <Show when={!isHeaderPrimary()}>
+                  <PrimaryKeyChip
+                    tier={props.tier}
+                    provId={provId}
+                    effectiveAuth={effectiveAuth}
+                    connectedProviders={props.connectedProviders}
+                    modelLabel={labelFor(modelName)}
+                    modelName={() => modelName}
+                    onPinKey={(label) => {
+                      const id = provId();
+                      if (!id) return;
+                      props.onPinKey?.(props.stage.id, id, label, effectiveAuth() ?? undefined);
+                    }}
+                    disabled={() => props.changingTier() === props.stage.id}
+                  />
+                </Show>
+                <Show
+                  when={
+                    !isHeaderPrimary() &&
+                    props.setModelParams &&
+                    props.getModelParams &&
+                    effectiveAuth()
+                  }
+                >
                   <ModelParamsAffordance
                     provider={provId()}
                     authType={effectiveAuth() ?? undefined}
@@ -421,7 +444,7 @@ const PrimaryKeyChip: Component<PrimaryKeyChipProps> = (props) => {
   const pinned = () => {
     const t = props.tier();
     const effective = t?.override_route ?? t?.auto_assigned_route ?? null;
-    return effective?.keyLabel ?? null;
+    return effective && !('kind' in effective) ? (effective.keyLabel ?? null) : null;
   };
 
   const usedByFallbacks = () =>

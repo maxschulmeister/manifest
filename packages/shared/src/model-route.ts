@@ -7,12 +7,14 @@ export interface ModelRoute {
   keyLabel?: string | null;
 }
 
-export interface HeaderTierFallbackRef {
+export interface HeaderTierRouteTarget {
   kind: 'header_tier';
   id: string;
 }
 
-export type FallbackRouteTarget = ModelRoute | HeaderTierFallbackRef;
+export type HeaderTierFallbackRef = HeaderTierRouteTarget;
+export type RouteTarget = ModelRoute | HeaderTierRouteTarget;
+export type FallbackRouteTarget = RouteTarget;
 
 export function routeEquals(
   a: ModelRoute | null | undefined,
@@ -56,14 +58,20 @@ export function isModelRouteArray(value: unknown): value is ModelRoute[] {
   return Array.isArray(value) && value.every(isModelRoute);
 }
 
-export function isHeaderTierFallbackRef(value: unknown): value is HeaderTierFallbackRef {
+export function isHeaderTierRouteTarget(value: unknown): value is HeaderTierRouteTarget {
   if (!value || typeof value !== 'object') return false;
   const v = value as Record<string, unknown>;
   return v.kind === 'header_tier' && typeof v.id === 'string' && v.id.length > 0;
 }
 
+export const isHeaderTierFallbackRef = isHeaderTierRouteTarget;
+
+export function isRouteTarget(value: unknown): value is RouteTarget {
+  return isModelRoute(value) || isHeaderTierRouteTarget(value);
+}
+
 export function isFallbackRouteTarget(value: unknown): value is FallbackRouteTarget {
-  return isModelRoute(value) || isHeaderTierFallbackRef(value);
+  return isRouteTarget(value);
 }
 
 export function isFallbackRouteTargetArray(value: unknown): value is FallbackRouteTarget[] {

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import type { AuthType } from 'manifest-shared';
+import { isModelRoute } from 'manifest-shared';
 import { UserProvider } from '../../entities/user-provider.entity';
 import { TierAssignment } from '../../entities/tier-assignment.entity';
 import { ModelPricingCacheService } from '../../model-prices/model-pricing-cache.service';
@@ -135,7 +136,9 @@ export class ProviderKeyService {
   }
 
   async getEffectiveModel(agentId: string, assignment: TierAssignment): Promise<string | null> {
-    const overrideModel = assignment.override_route?.model ?? null;
+    const overrideModel = isModelRoute(assignment.override_route)
+      ? assignment.override_route.model
+      : null;
     const autoModel = assignment.auto_assigned_route?.model ?? null;
 
     if (overrideModel !== null) {

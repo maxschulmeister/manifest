@@ -8,7 +8,14 @@ import { RoutingCacheService } from './routing-cache.service';
 import { ProviderService } from './provider.service';
 import { ModelDiscoveryService } from '../../model-discovery/model-discovery.service';
 import { randomUUID } from 'crypto';
-import type { AuthType, FallbackRouteTarget, ModelRoute, ResponseMode } from 'manifest-shared';
+import type {
+  AuthType,
+  FallbackRouteTarget,
+  HeaderTierRouteTarget,
+  ModelRoute,
+  ResponseMode,
+  RouteTarget,
+} from 'manifest-shared';
 import {
   DEFAULT_RESPONSE_MODE,
   DEFAULT_OUTPUT_MODALITY,
@@ -16,6 +23,7 @@ import {
   TierSlot,
   isFallbackRouteTargetArray,
   isHeaderTierFallbackRef,
+  isHeaderTierRouteTarget,
   isModelRoute,
 } from 'manifest-shared';
 import { isManifestUsableProvider } from '../../common/utils/subscription-support';
@@ -112,11 +120,91 @@ export class TierService {
     agentId: string,
     userId: string,
     tier: string,
-    model: string,
+    model?: string,
     provider?: string,
     authType?: AuthType,
     providerKeyLabel?: string,
+    target?: HeaderTierRouteTarget,
   ): Promise<TierAssignment> {
+    const headerTierRoutes = target
+      ? await this.validateHeaderTierOverrideTarget(agentId, target)
+      : null;
+    const route: RouteTarget = target
+      ? { kind: 'header_tier', id: target.id }
+      : await this.resolveModelOverride(agentId, model, provider, authType, providerKeyLabel);
+
+    const existing = await this.tierRepo.findOne({
+      where: { agent_id: agentId, tier },
+    });
+
+    if (existing) {
+      existing.override_route = route;
+      // If the same route target was in fallbacks, drop the matching entry —
+      // a primary target can't also be its own fallback. Other keys/models or
+      // other header tiers are intentionally preserved.
+      if (existing.fallback_routes) {
+        const filtered = existing.fallback_routes.filter((r) =>
+          isHeaderTierRouteTarget(route)
+            ? !(isHeaderTierFallbackRef(r) && r.id === route.id)
+            : !isModelRoute(r) || !routeMatches(r, route),
+        );
+        existing.fallback_routes = filtered.length > 0 ? filtered : null;
+      }
+      assertStreamableResponseMode(
+        existing.response_mode,
+        `tier "${tier}"`,
+        isModelRoute(route) ? route : (headerTierRoutes?.[0] ?? null),
+        concatModelRoutes(
+          headerTierRoutes?.slice(1) ?? null,
+          await this.routeChainsForTargets(agentId, existing.fallback_routes),
+        ),
+      );
+      existing.updated_at = new Date().toISOString();
+      await this.tierRepo.save(existing);
+      this.routingCache.invalidateAgent(agentId);
+      return existing;
+    }
+
+    const record: TierAssignment = Object.assign(new TierAssignment(), {
+      id: randomUUID(),
+      user_id: userId,
+      agent_id: agentId,
+      tier,
+      override_route: route,
+      auto_assigned_route: null,
+      fallback_routes: null,
+      output_modality: DEFAULT_OUTPUT_MODALITY,
+      response_mode: DEFAULT_RESPONSE_MODE,
+    });
+
+    try {
+      await this.tierRepo.insert(record);
+    } catch {
+      const retry = await this.tierRepo.findOne({ where: { agent_id: agentId, tier } });
+      if (retry)
+        return this.setOverride(
+          agentId,
+          userId,
+          tier,
+          model,
+          provider,
+          authType,
+          providerKeyLabel,
+          target,
+        );
+    }
+    this.routingCache.invalidateAgent(agentId);
+    return record;
+  }
+
+  private async resolveModelOverride(
+    agentId: string,
+    model: string | undefined,
+    provider?: string,
+    authType?: AuthType,
+    providerKeyLabel?: string,
+  ): Promise<ModelRoute> {
+    if (!model) throw new BadRequestException('Model is required.');
     const available = await this.discoveryService.getModelsForAgent(agentId);
     const matches = available.filter((m) => m.id === model);
     if (matches.length === 0) {
@@ -151,55 +239,49 @@ export class TierService {
           `provider + authType so the route is unambiguous.`,
       );
     }
+    return route;
+  }
 
-    const existing = await this.tierRepo.findOne({
-      where: { agent_id: agentId, tier },
-    });
-
-    if (existing) {
-      existing.override_route = route;
-      // If the same model+key tuple was in fallbacks, drop the matching entry
-      // — a (model, keyLabel) can't be both the primary and a fallback for
-      // the same tier. Other (model, otherKey) fallbacks are kept.
-      if (existing.fallback_routes) {
-        const filtered = existing.fallback_routes.filter(
-          (r) => !isModelRoute(r) || !routeMatches(r, route),
-        );
-        existing.fallback_routes = filtered.length > 0 ? filtered : null;
-      }
-      assertStreamableResponseMode(
-        existing.response_mode,
-        `tier "${tier}"`,
-        route,
-        modelRoutesOnly(existing.fallback_routes),
-      );
-      existing.updated_at = new Date().toISOString();
-      await this.tierRepo.save(existing);
-      this.routingCache.invalidateAgent(agentId);
-      return existing;
+  private async validateHeaderTierOverrideTarget(
+    agentId: string,
+    target: HeaderTierRouteTarget,
+  ): Promise<ModelRoute[]> {
+    if (!isHeaderTierRouteTarget(target)) {
+      throw new BadRequestException('Override target must be a header-tier reference.');
     }
-
-    const record: TierAssignment = Object.assign(new TierAssignment(), {
-      id: randomUUID(),
-      user_id: userId,
-      agent_id: agentId,
-      tier,
-      override_route: route,
-      auto_assigned_route: null,
-      fallback_routes: null,
-      output_modality: DEFAULT_OUTPUT_MODALITY,
-      response_mode: DEFAULT_RESPONSE_MODE,
-    });
-
-    try {
-      await this.tierRepo.insert(record);
-    } catch {
-      const retry = await this.tierRepo.findOne({ where: { agent_id: agentId, tier } });
-      if (retry)
-        return this.setOverride(agentId, userId, tier, model, provider, authType, providerKeyLabel);
+    const routes = await this.routeChainForTarget(agentId, target);
+    if (!routes) {
+      throw new BadRequestException(`Header tier override "${target.id}" is not available.`);
     }
-    this.routingCache.invalidateAgent(agentId);
-    return record;
+    return routes;
+  }
+
+  private async routeChainForTarget(
+    agentId: string,
+    target: RouteTarget | null | undefined,
+  ): Promise<ModelRoute[] | null> {
+    if (!target) return null;
+    if (isModelRoute(target)) return [target];
+    if (!isHeaderTierRouteTarget(target)) return null;
+    const match = await this.headerTierRepo.findOne({
+      where: { agent_id: agentId, id: target.id },
+    });
+    if (!match || !match.enabled || !match.override_route) return null;
+    const fallbackRoutes = await this.routeChainsForTargets(agentId, match.fallback_routes);
+    return [match.override_route, ...(fallbackRoutes ?? [])];
+  }
+
+  private async routeChainsForTargets(
+    agentId: string,
+    targets: FallbackRouteTarget[] | null | undefined,
+  ): Promise<ModelRoute[] | null> {
+    if (!targets) return null;
+    const routes: ModelRoute[] = [];
+    for (const target of targets) {
+      const chain = await this.routeChainForTarget(agentId, target);
+      if (chain) routes.push(...chain);
+    }
+    return routes.length > 0 ? routes : null;
   }
 
   async setResponseMode(
@@ -210,11 +292,17 @@ export class TierService {
   ): Promise<TierAssignment> {
     const existing = await this.tierRepo.findOne({ where: { agent_id: agentId, tier } });
     if (existing) {
+      const primaryChain =
+        (await this.routeChainForTarget(agentId, existing.override_route)) ??
+        (existing.auto_assigned_route ? [existing.auto_assigned_route] : null);
       assertStreamableResponseMode(
         responseMode,
         `tier "${tier}"`,
-        existing.override_route ?? existing.auto_assigned_route,
-        modelRoutesOnly(existing.fallback_routes),
+        primaryChain?.[0] ?? null,
+        concatModelRoutes(
+          primaryChain?.slice(1) ?? null,
+          await this.routeChainsForTargets(agentId, existing.fallback_routes),
+        ),
       );
       existing.response_mode = responseMode;
       existing.updated_at = new Date().toISOString();
@@ -251,7 +339,7 @@ export class TierService {
       existing.response_mode,
       `tier "${tier}"`,
       existing.auto_assigned_route,
-      modelRoutesOnly(existing.fallback_routes),
+      await this.routeChainsForTargets(agentId, existing.fallback_routes),
     );
     existing.updated_at = new Date().toISOString();
     await this.tierRepo.save(existing);
@@ -289,12 +377,17 @@ export class TierService {
     const fallbackRoutes = targets
       ? await this.validateFallbackTargets(agentId, targets)
       : await this.buildFallbackRoutes(agentId, models, routes);
+    const primaryChain =
+      (await this.routeChainForTarget(agentId, existing.override_route)) ??
+      (existing.auto_assigned_route ? [existing.auto_assigned_route] : null);
     assertStreamableResponseMode(
       existing.response_mode,
       `tier "${tier}"`,
-      existing.override_route ?? existing.auto_assigned_route,
-      fallbackRoutes?.filter((target): target is ModelRoute => !isHeaderTierFallbackRef(target)) ??
-        null,
+      primaryChain?.[0] ?? null,
+      concatModelRoutes(
+        primaryChain?.slice(1) ?? null,
+        await this.routeChainsForTargets(agentId, fallbackRoutes),
+      ),
     );
     existing.fallback_routes = fallbackRoutes;
     existing.updated_at = new Date().toISOString();
@@ -306,11 +399,14 @@ export class TierService {
   async clearFallbacks(agentId: string, tier: string): Promise<void> {
     const existing = await this.tierRepo.findOne({ where: { agent_id: agentId, tier } });
     if (!existing) return;
+    const primaryChain =
+      (await this.routeChainForTarget(agentId, existing.override_route)) ??
+      (existing.auto_assigned_route ? [existing.auto_assigned_route] : null);
     assertStreamableResponseMode(
       existing.response_mode,
       `tier "${tier}"`,
-      existing.override_route ?? existing.auto_assigned_route,
-      null,
+      primaryChain?.[0] ?? null,
+      primaryChain?.slice(1) ?? null,
     );
     existing.fallback_routes = null;
     existing.updated_at = new Date().toISOString();
@@ -402,8 +498,10 @@ export class TierService {
   }
 }
 
-function modelRoutesOnly(targets: FallbackRouteTarget[] | null | undefined): ModelRoute[] | null {
-  if (!targets) return null;
-  const routes = targets.filter(isModelRoute);
+function concatModelRoutes(
+  first: ModelRoute[] | null | undefined,
+  second: ModelRoute[] | null | undefined,
+): ModelRoute[] | null {
+  const routes = [...(first ?? []), ...(second ?? [])];
   return routes.length > 0 ? routes : null;
 }

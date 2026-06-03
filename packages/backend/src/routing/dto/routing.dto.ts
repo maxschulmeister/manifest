@@ -9,6 +9,7 @@ import {
   MaxLength,
   ArrayMinSize,
   ValidateNested,
+  ValidateIf,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 
@@ -166,9 +167,10 @@ export class ReorderProviderKeysDto {
 }
 
 export class SetOverrideDto {
+  @ValidateIf((body) => !body.route && !body.target)
   @IsString()
   @IsNotEmpty()
-  model!: string;
+  model?: string;
 
   @IsOptional()
   @IsString()
@@ -194,6 +196,11 @@ export class SetOverrideDto {
   @ValidateNested()
   @Type(() => ModelRouteDto)
   route?: ModelRouteDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => HeaderTierFallbackRefDto)
+  target?: HeaderTierFallbackRefDto;
 }
 
 export class CopilotPollDto {

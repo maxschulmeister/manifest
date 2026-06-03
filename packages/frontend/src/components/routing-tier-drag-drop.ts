@@ -1,12 +1,12 @@
 import { createSignal } from 'solid-js';
-import type { AuthType, FallbackRouteTarget, ModelRoute } from '../services/api.js';
+import type { AuthType, FallbackRouteTarget } from '../services/api.js';
 import { toast } from '../services/toast-store.js';
 
 export interface RoutingTierDragDropConfig {
   agentName: () => string;
   tierId: () => string;
   getPrimaryModel: () => string | null;
-  getPrimaryRoute: () => ModelRoute | null;
+  getPrimaryRoute: () => FallbackRouteTarget | null;
   getFallbacks: () => string[];
   getFallbackRoutes: () => FallbackRouteTarget[] | null;
   onFallbackUpdate: (fallbacks: string[], routes: FallbackRouteTarget[] | null) => void;
@@ -16,6 +16,7 @@ export interface RoutingTierDragDropConfig {
     authType?: AuthType,
     keyLabel?: string,
   ) => Promise<void>;
+  onPrimaryHeaderTierOverride?: (headerTierId: string) => Promise<void> | void;
   persistFallbacks: (
     agentName: string,
     tier: string,
@@ -69,10 +70,6 @@ export function createRoutingTierDragDrop(config: RoutingTierDragDropConfig) {
     }
     const fallbackRoutes = config.getFallbackRoutes();
     const fbRoute = fallbackRoutes?.[fbIndex] ?? null;
-    if (fbRoute && 'kind' in fbRoute) {
-      setSwappingFbIndex(null);
-      return;
-    }
     const newFallbacks = [...fallbacks];
     newFallbacks[fbIndex] = currentModel;
     const newRoutes =
@@ -93,14 +90,18 @@ export function createRoutingTierDragDrop(config: RoutingTierDragDropConfig) {
       setSwappingFbIndex(null);
       return;
     }
-    const provId = fbRoute?.provider ?? config.resolveProviderForModel(fbModel);
     try {
-      await config.onPrimaryOverride(
-        fbModel,
-        provId ?? '',
-        fbRoute?.authType,
-        fbRoute?.keyLabel ?? undefined,
-      );
+      if (fbRoute && 'kind' in fbRoute) {
+        await config.onPrimaryHeaderTierOverride?.(fbRoute.id);
+      } else {
+        const provId = fbRoute?.provider ?? config.resolveProviderForModel(fbModel);
+        await config.onPrimaryOverride(
+          fbModel,
+          provId ?? '',
+          fbRoute?.authType,
+          fbRoute?.keyLabel ?? undefined,
+        );
+      }
     } finally {
       setSwappingFbIndex(null);
     }
@@ -140,9 +141,7 @@ export function createRoutingTierDragDrop(config: RoutingTierDragDropConfig) {
     };
     const newRoutes = buildRoutes();
     const newPrimaryRoute =
-      newRoutes && newRoutes.length === newFallbacks.length && !('kind' in fallbackRoutes![0]!)
-        ? fallbackRoutes![0]
-        : null;
+      fallbackRoutes && fallbackRoutes.length === fallbacks.length ? fallbackRoutes[0] : null;
     config.onFallbackUpdate(newFallbacks, newRoutes);
     try {
       await config.persistFallbacks(
@@ -157,14 +156,18 @@ export function createRoutingTierDragDrop(config: RoutingTierDragDropConfig) {
       setSwappingFbIndex(null);
       return;
     }
-    const provId = newPrimaryRoute?.provider ?? config.resolveProviderForModel(newPrimary);
     try {
-      await config.onPrimaryOverride(
-        newPrimary,
-        provId ?? '',
-        newPrimaryRoute?.authType,
-        newPrimaryRoute?.keyLabel ?? undefined,
-      );
+      if (newPrimaryRoute && 'kind' in newPrimaryRoute) {
+        await config.onPrimaryHeaderTierOverride?.(newPrimaryRoute.id);
+      } else {
+        const provId = newPrimaryRoute?.provider ?? config.resolveProviderForModel(newPrimary);
+        await config.onPrimaryOverride(
+          newPrimary,
+          provId ?? '',
+          newPrimaryRoute?.authType,
+          newPrimaryRoute?.keyLabel ?? undefined,
+        );
+      }
     } finally {
       setSwappingFbIndex(null);
     }

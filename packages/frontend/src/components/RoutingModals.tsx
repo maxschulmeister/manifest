@@ -19,7 +19,6 @@ import {
   activeRouteKeys,
   availableRouteKeysForModel,
   routeKeySelectionForModel,
-  usedKeyLabelsForModelInTier,
 } from '../services/routing-utils.js';
 
 interface RoutingModalsProps {
@@ -34,6 +33,8 @@ interface RoutingModalsProps {
     provider: string,
     authType?: AuthType,
   ) => void;
+  onHeaderTierOverride?: (tierId: string, headerTierId: string) => void;
+  onSpecificityHeaderTierOverride?: (category: string, headerTierId: string) => void;
   fallbackPickerTier: Accessor<string | null>;
   onFallbackPickerClose: () => void;
   providersPath: () => string;
@@ -98,6 +99,43 @@ const RoutingModals: Component<RoutingModalsProps> = (props) => {
         ?.response_mode,
     );
 
+  const activeSpecificityTierRows = (): TierAssignment[] =>
+    (props.specificityAssignments?.() ?? [])
+      .filter((assignment) => assignment.is_active)
+      .map((assignment) => ({ ...assignment, tier: assignment.category }));
+
+  const fallbackPickerTiers = (tierId: string): TierAssignment[] => {
+    const specificityRows = activeSpecificityTierRows();
+    return specificityRows.some((row) => row.tier === tierId) ? specificityRows : props.tiers();
+  };
+
+  const headerTierPickerOptions = () =>
+    props
+      .headerTiers()
+      .filter((tier) => tier.enabled && tier.override_route)
+      .map((tier) => ({
+        id: tier.id,
+        name: tier.name,
+        route: tier.override_route,
+        fallback_routes: tier.fallback_routes,
+      }));
+
+  const handlePrimaryHeaderTierSelect = (
+    tierId: string,
+    headerTierId: string,
+    close: () => void,
+    specificity = false,
+  ) => {
+    const route = props.headerTiers().find((tier) => tier.id === headerTierId)?.override_route;
+    if (!route) return;
+    close();
+    if (specificity) {
+      props.onSpecificityHeaderTierOverride?.(tierId, headerTierId);
+      return;
+    }
+    props.onHeaderTierOverride?.(tierId, headerTierId);
+  };
+
   const handleSelect = (
     tierId: string,
     modelName: string,
@@ -147,7 +185,11 @@ const RoutingModals: Component<RoutingModalsProps> = (props) => {
             customProviders={props.customProviders()}
             connectedProviders={props.connectedProviders()}
             requiredCapability={requiredCapabilityForTier(tierId())}
+            headerTierOptions={headerTierPickerOptions()}
             onSelect={handleSelect}
+            onSelectHeaderTier={(tid, headerTierId) =>
+              handlePrimaryHeaderTierSelect(tid, headerTierId, props.onDropdownClose)
+            }
             onClose={props.onDropdownClose}
             onConnectProviders={() => {
               props.onDropdownClose();
@@ -173,8 +215,17 @@ const RoutingModals: Component<RoutingModalsProps> = (props) => {
               customProviders={props.customProviders()}
               connectedProviders={props.connectedProviders()}
               requiredCapability={requiredCapabilityForSpecificity(category())}
+              headerTierOptions={headerTierPickerOptions()}
               onSelect={(_, model, provider, authType) =>
                 props.onSpecificityOverride?.(category(), model, provider, authType)
+              }
+              onSelectHeaderTier={(tid, headerTierId) =>
+                handlePrimaryHeaderTierSelect(
+                  tid,
+                  headerTierId,
+                  () => props.onSpecificityDropdownClose?.(),
+                  true,
+                )
               }
               onClose={() => props.onSpecificityDropdownClose?.()}
               onConnectProviders={() => {
@@ -189,6 +240,7 @@ const RoutingModals: Component<RoutingModalsProps> = (props) => {
 
       <Show when={props.fallbackPickerTier()}>
         {(tierId) => {
+          const pickerTiers = () => fallbackPickerTiers(tierId());
           const filteredModels = () => {
             return props.models().filter((m) => {
               // Find how many keys exist for this model's provider
@@ -203,6 +255,7 @@ const RoutingModals: Component<RoutingModalsProps> = (props) => {
                 const primaryRoute = tier?.override_route ?? tier?.auto_assigned_route ?? null;
                 if (
                   primaryRoute &&
+                  !('kind' in primaryRoute) &&
                   primaryRoute.model === m.model_name &&
                   primaryRoute.provider.toLowerCase() === providerId.toLowerCase() &&
                   primaryRoute.authType === authType
@@ -278,19 +331,11 @@ const RoutingModals: Component<RoutingModalsProps> = (props) => {
               tierId={tierId()}
               agentName={props.agentName()}
               models={filteredModels()}
-              tiers={props.tiers()}
+              tiers={pickerTiers()}
               customProviders={props.customProviders()}
               connectedProviders={props.connectedProviders()}
               requiredCapability={requiredCapabilityForTier(tierId())}
-              headerTierOptions={props
-                .headerTiers()
-                .filter((tier) => tier.enabled && tier.override_route)
-                .map((tier) => ({
-                  id: tier.id,
-                  name: tier.name,
-                  route: tier.override_route,
-                  fallback_routes: tier.fallback_routes,
-                }))}
+              headerTierOptions={headerTierPickerOptions()}
               onSelect={handleFallbackSelect}
               onSelectHeaderTier={(tid, headerTierId) => {
                 props.onFallbackPickerClose();

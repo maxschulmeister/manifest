@@ -72,6 +72,27 @@ describe('SpecificityController', () => {
         'openai',
         'api_key',
         undefined,
+        undefined,
+      );
+      expect(result).toBe(override);
+    });
+
+    it('should forward header-tier override targets', async () => {
+      const target = { kind: 'header_tier' as const, id: 'ht-fast' };
+      const override = { id: 'sa-1', category: 'coding', override_route: target };
+      mockSpecificityService.setOverride.mockResolvedValue(override);
+
+      const result = await controller.setOverride(mockUser, 'test-agent', 'coding', { target });
+
+      expect(mockSpecificityService.setOverride).toHaveBeenCalledWith(
+        'agent-1',
+        'user-1',
+        'coding',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        target,
       );
       expect(result).toBe(override);
     });
@@ -171,8 +192,26 @@ describe('SpecificityController', () => {
         'coding',
         ['model-a'],
         undefined,
+        undefined,
       );
       expect(result).toEqual(['model-a']);
+    });
+
+    it('should forward header-tier fallback targets', async () => {
+      const targets = [{ kind: 'header_tier' as const, id: 'ht-fast' }];
+      mockSpecificityService.setFallbacks.mockResolvedValue(targets);
+      const result = await controller.setFallbacks(mockUser, 'test-agent', 'web_browsing', {
+        models: ['ht-fast'],
+        targets,
+      });
+      expect(mockSpecificityService.setFallbacks).toHaveBeenCalledWith(
+        'agent-1',
+        'web_browsing',
+        ['ht-fast'],
+        undefined,
+        targets,
+      );
+      expect(result).toEqual(targets);
     });
 
     it('should reject invalid category', async () => {

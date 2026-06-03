@@ -3,13 +3,13 @@ import type {
   AuthType,
   AvailableModel,
   CustomProviderData,
+  FallbackRouteTarget,
   RequestParamDefaults,
   ResponseMode,
   RoutingProvider,
   TierAssignment,
 } from '../services/api.js';
 import { DEFAULT_STAGE, STAGES } from '../services/providers.js';
-import OutputControls from '../components/OutputControls.js';
 import RoutingTierCard from './RoutingTierCard.js';
 
 export interface RoutingDefaultTierSectionProps {
@@ -27,6 +27,7 @@ export interface RoutingDefaultTierSectionProps {
   addingFallback: () => string | null;
   onDropdownOpen: (tierId: string) => void;
   onOverride: (tierId: string, model: string, provider: string, authType?: AuthType) => void;
+  onHeaderTierOverride?: (tierId: string, headerTierId: string) => void | Promise<void>;
   onPinKey: (
     tierId: string,
     providerId: string,
@@ -34,7 +35,11 @@ export interface RoutingDefaultTierSectionProps {
     authType?: AuthType,
   ) => void;
   onReset: (tierId: string) => void;
-  onFallbackUpdate: (tierId: string, fallbacks: string[]) => void;
+  onFallbackUpdate: (
+    tierId: string,
+    fallbacks: string[],
+    fallbackRoutes?: FallbackRouteTarget[] | null,
+  ) => void;
   onAddFallback: (tierId: string) => void;
   getFallbacksFor: (tierId: string) => string[];
   getTier: (tierId: string) => TierAssignment | undefined;
@@ -95,6 +100,7 @@ const RoutingDefaultTierSection: Component<RoutingDefaultTierSectionProps> = (pr
         agentName={props.agentName}
         onDropdownOpen={props.onDropdownOpen}
         onOverride={props.onOverride}
+        onHeaderTierOverride={props.onHeaderTierOverride}
         onPinKey={props.onPinKey}
         onReset={props.onReset}
         onFallbackUpdate={props.onFallbackUpdate}
@@ -127,6 +133,7 @@ const RoutingDefaultTierSection: Component<RoutingDefaultTierSectionProps> = (pr
             agentName={props.agentName}
             onDropdownOpen={props.onDropdownOpen}
             onOverride={props.onOverride}
+            onHeaderTierOverride={props.onHeaderTierOverride}
             onPinKey={props.onPinKey}
             onReset={props.onReset}
             onFallbackUpdate={props.onFallbackUpdate}
