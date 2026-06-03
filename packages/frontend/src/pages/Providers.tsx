@@ -75,6 +75,9 @@ const Providers: Component = () => {
     });
   };
 
+  const isInitialLoad = () =>
+    connectedProviders.state === 'pending' || connectedProviders.state === 'unresolved';
+
   const handleProviderUpdate = async () => {
     await Promise.all([refetchProviders(), refetchCustomProviders()]);
     maybeShowInstructionAfterUpdate();
@@ -103,7 +106,7 @@ const Providers: Component = () => {
         </div>
       </div>
 
-      <Show when={inSubView() && !connectedProviders.loading}>
+      <Show when={inSubView() && !isInitialLoad()}>
         <div class="providers-page__subview-bar">
           <button type="button" class="providers-page__back-link" onClick={handleBackToList}>
             <svg
@@ -126,7 +129,7 @@ const Providers: Component = () => {
       </Show>
 
       <Show
-        when={!connectedProviders.loading}
+        when={!isInitialLoad()}
         fallback={
           <div class="providers-page__loading">
             <span class="spinner" role="status" aria-label="Loading providers" />
