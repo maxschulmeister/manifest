@@ -54,6 +54,8 @@ interface Props {
   onFallbacksUpdate: (fallbacks: string[], routes?: ModelRoute[] | null) => void;
   onEdit?: () => void;
   onDisable?: () => void;
+  /** Opens the parent type-to-confirm delete flow. */
+  onRequestDelete?: () => void;
   changingResponseMode?: boolean;
   onResponseModeChange?: (mode: ResponseMode) => void | Promise<void>;
   getModelParams?: (
@@ -238,63 +240,86 @@ const HeaderTierCard: Component<Props> = (props) => {
       <div class="routing-card__header">
         <span class="routing-card__tier header-tier-card__title">
           <span class="header-tier-card__name">{props.tier.name}</span>
-          <div class="header-tier-card__kebab">
-            <button
-              type="button"
-              class="header-tier-card__icon-btn"
-              onClick={() => setMenuOpen(!menuOpen())}
-              aria-label={`Options for ${props.tier.name}`}
-              title="Options"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                fill="currentColor"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
+          <div class="header-tier-card__title-actions">
+            <div class="header-tier-card__kebab">
+              <button
+                type="button"
+                class="header-tier-card__icon-btn"
+                onClick={() => setMenuOpen(!menuOpen())}
+                aria-label={`Options for ${props.tier.name}`}
+                title="Options"
               >
-                <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4m0 6c-1.08 0-2-.92-2-2s.92-2 2-2 2 .92 2 2-.92 2-2 2" />
-                <path d="m20.42 13.4-.51-.29c.05-.37.08-.74.08-1.11s-.03-.74-.08-1.11l.51-.29c.96-.55 1.28-1.78.73-2.73l-1-1.73a2.006 2.006 0 0 0-2.73-.73l-.53.31c-.58-.46-1.22-.83-1.9-1.11v-.6c0-1.1-.9-2-2-2h-2c-1.1 0-2 .9-2 2v.6c-.67.28-1.31.66-1.9 1.11l-.53-.31c-.96-.55-2.18-.22-2.73.73l-1 1.73c-.55.96-.22 2.18.73 2.73l.51.29c-.05.37-.08.74-.08 1.11s.03.74.08 1.11l-.51.29c-.96.55-1.28 1.78-.73 2.73l1 1.73c.55.95 1.78 1.28 2.73.73l.53-.31c.58.46 1.22.83 1.9 1.11v.6c0 1.1.9 2 2 2h2c1.1 0 2-.9 2-2v-.6a8.7 8.7 0 0 0 1.9-1.11l.53.31c.95.55 2.18.22 2.73-.73l1-1.73c.55-.96.22-2.18-.73-2.73m-2.59-2.78c.11.45.17.92.17 1.38s-.06.92-.17 1.38a1 1 0 0 0 .47 1.11l1.12.65-1 1.73-1.14-.66c-.38-.22-.87-.16-1.19.14-.68.65-1.51 1.13-2.38 1.4-.42.13-.71.52-.71.96v1.3h-2v-1.3c0-.44-.29-.83-.71-.96-.88-.27-1.7-.75-2.38-1.4a1.01 1.01 0 0 0-1.19-.15l-1.14.66-1-1.73 1.12-.65c.39-.22.58-.68.47-1.11-.11-.45-.17-.92-.17-1.38s.06-.93.17-1.38A1 1 0 0 0 5.7 9.5l-1.12-.65 1-1.73 1.14.66c.38.22.87.16 1.19-.14.68-.65 1.51-1.13 2.38-1.4.42-.13.71-.52.71-.96v-1.3h2v1.3c0 .44.29.83.71.96.88.27 1.7.75 2.38 1.4.32.31.81.36 1.19.14l1.14-.66 1 1.73-1.12.65c-.39.22-.58.68-.47 1.11Z" />
-              </svg>
-            </button>
-            <Show when={menuOpen()}>
-              <div class="header-tier-card__menu" onMouseLeave={() => setMenuOpen(false)}>
-                <button
-                  type="button"
-                  class="header-tier-card__menu-item"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    setSnippetOpen(true);
-                  }}
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="16"
+                  height="16"
+                  fill="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
                 >
-                  Use model ID
-                </button>
-                <Show when={props.onEdit}>
+                  <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4m0 6c-1.08 0-2-.92-2-2s.92-2 2-2 2 .92 2 2-.92 2-2 2" />
+                  <path d="m20.42 13.4-.51-.29c.05-.37.08-.74.08-1.11s-.03-.74-.08-1.11l.51-.29c.96-.55 1.28-1.78.73-2.73l-1-1.73a2.006 2.006 0 0 0-2.73-.73l-.53.31c-.58-.46-1.22-.83-1.9-1.11v-.6c0-1.1-.9-2-2-2h-2c-1.1 0-2 .9-2 2v.6c-.67.28-1.31.66-1.9 1.11l-.53-.31c-.96-.55-2.18-.22-2.73.73l-1 1.73c-.55.96-.22 2.18.73 2.73l.51.29c-.05.37-.08.74-.08 1.11s.03.74.08 1.11l-.51.29c-.96.55-1.28 1.78-.73 2.73l1 1.73c.55.95 1.78 1.28 2.73.73l.53-.31c.58.46 1.22.83 1.9 1.11v.6c0 1.1.9 2 2 2h2c1.1 0 2-.9 2-2v-.6a8.7 8.7 0 0 0 1.9-1.11l.53.31c.95.55 2.18.22 2.73-.73l1-1.73c.55-.96.22-2.18-.73-2.73m-2.59-2.78c.11.45.17.92.17 1.38s-.06.92-.17 1.38a1 1 0 0 0 .47 1.11l1.12.65-1 1.73-1.14-.66c-.38-.22-.87-.16-1.19.14-.68.65-1.51 1.13-2.38 1.4-.42.13-.71.52-.71.96v1.3h-2v-1.3c0-.44-.29-.83-.71-.96-.88-.27-1.7-.75-2.38-1.4a1.01 1.01 0 0 0-1.19-.15l-1.14.66-1-1.73 1.12-.65c.39-.22.58-.68.47-1.11-.11-.45-.17-.92-.17-1.38s.06-.93.17-1.38A1 1 0 0 0 5.7 9.5l-1.12-.65 1-1.73 1.14.66c.38.22.87.16 1.19-.14.68-.65 1.51-1.13 2.38-1.4.42-.13.71-.52.71-.96v-1.3h2v1.3c0 .44.29.83.71.96.88.27 1.7.75 2.38 1.4.32.31.81.36 1.19.14l1.14-.66 1 1.73-1.12.65c-.39.22-.58.68-.47 1.11Z" />
+                </svg>
+              </button>
+              <Show when={menuOpen()}>
+                <div class="header-tier-card__menu" onMouseLeave={() => setMenuOpen(false)}>
                   <button
                     type="button"
                     class="header-tier-card__menu-item"
                     onClick={() => {
                       setMenuOpen(false);
-                      props.onEdit?.();
+                      setSnippetOpen(true);
                     }}
                   >
-                    Edit tier
+                    Use model ID
                   </button>
-                </Show>
-                <Show when={props.onDisable}>
-                  <button
-                    type="button"
-                    class="header-tier-card__menu-item header-tier-card__menu-item--danger"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      props.onDisable?.();
-                    }}
-                  >
-                    Disable
-                  </button>
-                </Show>
-              </div>
+                  <Show when={props.onEdit}>
+                    <button
+                      type="button"
+                      class="header-tier-card__menu-item"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        props.onEdit?.();
+                      }}
+                    >
+                      Edit tier
+                    </button>
+                  </Show>
+                  <Show when={props.onDisable}>
+                    <button
+                      type="button"
+                      class="header-tier-card__menu-item header-tier-card__menu-item--danger"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        props.onDisable?.();
+                      }}
+                    >
+                      Disable
+                    </button>
+                  </Show>
+                </div>
+              </Show>
+            </div>
+            <Show when={props.onRequestDelete}>
+              <button
+                type="button"
+                class="header-tier-card__icon-btn header-tier-card__icon-btn--danger"
+                onClick={() => props.onRequestDelete?.()}
+                aria-label={`Delete tier ${props.tier.name}`}
+                title="Delete tier"
+                data-testid={`delete-${props.tier.id}`}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="14"
+                  height="14"
+                  fill="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path d="M9 3h6c.55 0 1 .45 1 1v1h4c.55 0 1 .45 1 1s-.45 1-1 1h-1.07l-.86 14.13A2 2 0 0 1 16.07 23H7.93a2 2 0 0 1-2-1.87L5.07 7H4c-.55 0-1-.45-1-1s.45-1 1-1h4V4c0-.55.45-1 1-1Zm1 2h4V5h-4Zm-2.93 2 .85 14h8.15l.86-14H7.07ZM10 10c.55 0 1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1v-6c0-.55.45-1 1-1Zm4 0c.55 0 1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1v-6c0-.55.45-1 1-1Z" />
+                </svg>
+              </button>
             </Show>
           </div>
         </span>

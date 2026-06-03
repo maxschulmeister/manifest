@@ -131,6 +131,12 @@
   background: hsl(var(--muted) / 0.8);
   color: hsl(var(--foreground));
 }
+.header-tier-card__title-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
 
 /* Right: Reset / + Add model + kebab, all in one inline cluster mirroring
    the generalist-card "Reset" placement. */

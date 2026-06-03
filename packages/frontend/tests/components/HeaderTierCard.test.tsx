@@ -619,6 +619,48 @@ describe('HeaderTierCard', () => {
     });
   });
 
+  it('renders the trash icon to the right of the cog when delete is available', () => {
+    const { container, getByLabelText } = render(() => (
+      <HeaderTierCard
+        agentName="demo"
+        tier={baseTier}
+        models={models}
+        customProviders={customProviders}
+        connectedProviders={connectedProviders}
+        onOverride={vi.fn()}
+        onFallbacksUpdate={vi.fn()}
+        onRequestDelete={vi.fn()}
+      />
+    ));
+
+    expect(getByLabelText('Delete tier Premium')).toBeTruthy();
+    const actions = container.querySelector('.header-tier-card__title-actions');
+    const buttons = Array.from(actions?.querySelectorAll('button') ?? []);
+    expect(buttons.map((button) => button.getAttribute('aria-label'))).toEqual([
+      'Options for Premium',
+      'Delete tier Premium',
+    ]);
+  });
+
+  it('requests parent delete confirmation when the trash icon is clicked', () => {
+    const onRequestDelete = vi.fn();
+    const { getByLabelText } = render(() => (
+      <HeaderTierCard
+        agentName="demo"
+        tier={baseTier}
+        models={models}
+        customProviders={customProviders}
+        connectedProviders={connectedProviders}
+        onOverride={vi.fn()}
+        onFallbacksUpdate={vi.fn()}
+        onRequestDelete={onRequestDelete}
+      />
+    ));
+
+    fireEvent.click(getByLabelText('Delete tier Premium'));
+    expect(onRequestDelete).toHaveBeenCalledTimes(1);
+  });
+
   it('opens the kebab menu and exposes model ID / Edit / Disable', () => {
     const onEdit = vi.fn();
     const onDisable = vi.fn();

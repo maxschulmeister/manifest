@@ -32,8 +32,8 @@ interface Props {
   onSaved: (tier: HeaderTier) => void;
   /** When set, shows a back arrow instead of close button. */
   onBack?: () => void;
-  /** When set and editing, shows a Delete tier button. */
-  onDelete?: (id: string) => void;
+  /** When set and editing, shows a Delete tier button (opens parent confirm flow). */
+  onRequestDelete?: (id: string) => void;
   /** Available models for stream compatibility check. */
   models?: AvailableModel[];
 }
@@ -373,15 +373,12 @@ const HeaderTierModal: Component<Props> = (props) => {
         </Show>
 
         <div class="header-tier-modal__footer">
-          <Show when={editingTier && props.onDelete}>
+          <Show when={editingTier && props.onRequestDelete}>
             <button
               type="button"
               class="btn btn--outline header-tier-modal__delete-btn"
-              onClick={() => {
-                if (confirm(`Delete tier "${editingTier!.name}"?`)) {
-                  props.onDelete!(editingTier!.id);
-                }
-              }}
+              data-testid="header-tier-modal-delete"
+              onClick={() => props.onRequestDelete!(editingTier!.id)}
             >
               Delete tier
             </button>
