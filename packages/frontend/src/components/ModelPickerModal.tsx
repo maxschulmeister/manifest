@@ -593,26 +593,33 @@ const ModelPickerModal: Component<Props> = (props) => {
             </Show>
             <For each={props.headerTierOptions ?? []}>
               {(tier) => {
-                const routeProvider = tier.route?.provider;
-                const routeModel = tier.route?.model;
-                const provId = routeProvider
-                  ? (resolveProviderId(routeProvider) ??
-                    inferProviderFromModel(routeModel ?? '') ??
-                    routeProvider)
-                  : undefined;
-                const provDef = provId ? PROVIDERS.find((p) => p.id === provId) : undefined;
-                const providerName = provDef?.name ?? routeProvider ?? 'Unknown';
-                const allModels = () => {
-                  const labels: string[] = [];
-                  if (routeModel) {
-                    labels.push(labelForModel(routeModel, providerLabelMap()));
+                const modelEntries = () => {
+                  const entries: { label: string; provId: string | undefined }[] = [];
+                  if (tier.route?.model) {
+                    const fbProvId = tier.route.provider
+                      ? (resolveProviderId(tier.route.provider) ??
+                        inferProviderFromModel(tier.route.model) ??
+                        tier.route.provider)
+                      : inferProviderFromModel(tier.route.model);
+                    entries.push({
+                      label: labelForModel(tier.route.model, providerLabelMap()),
+                      provId: fbProvId,
+                    });
                   }
                   for (const fb of tier.fallback_routes ?? []) {
                     if ('model' in fb && fb.model) {
-                      labels.push(labelForModel(fb.model, providerLabelMap()));
+                      const fbProvId = fb.provider
+                        ? (resolveProviderId(fb.provider) ??
+                          inferProviderFromModel(fb.model) ??
+                          fb.provider)
+                        : inferProviderFromModel(fb.model);
+                      entries.push({
+                        label: labelForModel(fb.model, providerLabelMap()),
+                        provId: fbProvId,
+                      });
                     }
                   }
-                  return labels;
+                  return entries;
                 };
                 return (
                   <button
@@ -625,7 +632,17 @@ const ModelPickerModal: Component<Props> = (props) => {
                     <span class="routing-modal__model-cell routing-modal__model-cell--tier-models">
                       <span class="routing-modal__model-cell-label">Models</span>
                       <span class="routing-modal__model-price">
-                        {allModels().length > 0 ? allModels().join(' → ') : 'No models'}
+                        {modelEntries().length > 0
+                          ? modelEntries().map((e, i) => (
+                              <>
+                                {i > 0 && <span class="routing-modal__tier-arrow"> → </span>}
+                                <span class="routing-modal__tier-model-entry">
+                                  {e.provId ? providerIcon(e.provId, 14) : null}
+                                  {e.label}
+                                </span>
+                              </>
+                            ))
+                          : 'No models'}
                       </span>
                     </span>
                   </button>

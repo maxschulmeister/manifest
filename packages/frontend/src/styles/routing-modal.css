@@ -190,6 +190,16 @@
   flex-wrap: wrap;
 }
 
+.routing-modal__tier-model-entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.routing-modal__tier-arrow {
+  color: hsl(var(--muted-foreground));
+}
+
 .routing-modal__table-head {
   display: grid;
   grid-template-columns: var(--routing-modal-model-grid);
