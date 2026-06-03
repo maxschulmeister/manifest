@@ -588,7 +588,6 @@ const ModelPickerModal: Component<Props> = (props) => {
             <Show when={(props.headerTierOptions ?? []).length > 0}>
               <div class="routing-modal__table-head" aria-hidden="true">
                 <span>Name</span>
-                <span>Provider</span>
                 <span>Models</span>
               </div>
             </Show>
@@ -622,11 +621,6 @@ const ModelPickerModal: Component<Props> = (props) => {
                   >
                     <span class="routing-modal__model-left">
                       <span class="routing-modal__model-label">{tier.name}</span>
-                    </span>
-                    <span class="routing-modal__model-cell routing-modal__model-cell--tier-provider">
-                      <span class="routing-modal__model-cell-label">Provider</span>
-                      {provId ? providerIcon(provId, 14) : null}
-                      {providerName}
                     </span>
                     <span class="routing-modal__model-cell routing-modal__model-cell--tier-models">
                       <span class="routing-modal__model-cell-label">Models</span>

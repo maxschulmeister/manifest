@@ -169,10 +169,10 @@
   border-top: 1px solid hsl(var(--border));
 }
 
-/* ── Tiers tab (3-column grid) ─────────────────────── */
+/* ── Tiers tab (2-column grid) ─────────────────────── */
 [data-active-tab='tiers'] .routing-modal__card,
 [data-active-tab='tiers'] {
-  --routing-modal-tier-grid: minmax(0, 1fr) 140px minmax(0, 1.5fr);
+  --routing-modal-tier-grid: minmax(0, 1fr) minmax(0, 2fr);
 }
 
 [data-active-tab='tiers'] .routing-modal__table-head {
@@ -180,24 +180,14 @@
   padding-left: 24px;
 }
 
-[data-active-tab='tiers'] .routing-modal__table-head > span:nth-child(2) {
-  justify-self: start;
-  text-align: left;
-}
-
 [data-active-tab='tiers'] .routing-modal__model--tier {
   grid-template-columns: var(--routing-modal-tier-grid);
   padding-left: 24px;
 }
 
-.routing-modal__model--tier .routing-modal__model-cell--tier-provider {
-  justify-content: flex-start;
-  gap: 6px;
-  color: hsl(var(--muted-foreground));
-}
-
 .routing-modal__model--tier .routing-modal__model-cell--tier-models {
   justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 .routing-modal__table-head {
