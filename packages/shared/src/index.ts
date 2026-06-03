@@ -25,10 +25,10 @@ export type { SpecificityCategory } from './specificity';
 export {
   aliasToSpecificityCategory,
   classifyModelAlias,
+  getStaticModelAliases,
   getValidAliases,
   specificityCategoryToAlias,
 } from './model-alias';
-export { headerTierNameToModelAlias, isSafeHeaderTierModelAlias } from './header-tier-alias';
 export type { ModelAliasClassification } from './model-alias';
 export { AUTH_TYPES } from './auth-types';
 export type { AuthType } from './auth-types';

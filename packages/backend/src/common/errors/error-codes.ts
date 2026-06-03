@@ -59,11 +59,11 @@ export const MANIFEST_ERRORS = {
     template: '`messages` array exceeds maximum length of {max}.',
   },
   M410: {
-    title: 'Unrecognized model alias',
+    title: 'Unrecognized model',
     template: 'Unrecognized model "{model}". Use one of: {aliases}.',
   },
   M411: {
-    title: 'No route for model alias',
+    title: 'No route for model',
     template: 'No model is configured for "{alias}". Set one up in the dashboard: {dashboardUrl}',
   },
   M500: {

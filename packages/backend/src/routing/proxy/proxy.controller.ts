@@ -37,7 +37,6 @@ import { ProxyExceptionFilter, isChatRenderingClient } from './proxy-exception.f
 import { sendFriendlyResponse } from './proxy-friendly-response';
 import { formatManifestError } from '../../common/errors/error-codes';
 import { parseModelAliasFromBody } from '../model-alias-validation';
-import { HeaderTierService } from '../header-tiers/header-tier.service';
 import { RoutingAliasService } from '../routing-alias.service';
 import type { ProxyApiMode } from './proxy-types';
 
@@ -62,7 +61,6 @@ export class ProxyController {
     private readonly thinkingCache: ThinkingBlockCache,
     private readonly reasoningCache: ReasoningContentCache,
     private readonly recordingCache: AgentRecordingCacheService,
-    private readonly headerTierService: HeaderTierService,
     private readonly routingAliasService: RoutingAliasService,
   ) {}
 
@@ -70,7 +68,7 @@ export class ProxyController {
   async models(
     @Req() req: Request & { ingestionContext: IngestionContext },
   ): Promise<Record<string, unknown>> {
-    const ids = await this.routingAliasService.listConfiguredAliases(req.ingestionContext.agentId);
+    const ids = await this.routingAliasService.listRoutableModelIds(req.ingestionContext.agentId);
     const data = ids.map((id) => ({
       id,
       object: 'model',
@@ -140,7 +138,6 @@ export class ProxyController {
       this.rateLimiter.acquireSlot(userId);
       slotAcquired = true;
       const modelAlias = await parseModelAliasFromBody(body, req.ingestionContext.agentId, {
-        headerTierService: this.headerTierService,
         routingAliasService: this.routingAliasService,
       });
       const specificityOverride = req.headers['x-manifest-specificity'] as string | undefined;

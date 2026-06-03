@@ -25,7 +25,6 @@ import type {
 import {
   DEFAULT_RESPONSE_MODE,
   SPECIFICITY_CATEGORIES,
-  headerTierNameToModelAlias,
   modelParamsScopeForRouting,
   routeEquals,
   snapshotRequestParams,
@@ -52,6 +51,7 @@ import { AgentModelParamsService } from '../routing-core/agent-model-params.serv
 import { ProviderParamSpecService } from '../routing-core/provider-param-spec.service';
 import { buildFriendlyResponse, getDashboardUrl } from './proxy-friendly-response';
 import { formatManifestError } from '../../common/errors/error-codes';
+import { assertAliasRouteConfigured, modelAliasLabel } from '../model-alias-validation';
 import { peekStream } from './stream-warmup';
 import { toChatCompletionsRequest } from './responses-adapter';
 import { messagesToChatCompletionsRequest } from './anthropic-messages-adapter';
@@ -181,21 +181,10 @@ export class ProxyService {
       specificityOverride,
       headers,
       modelAlias,
+      agentName,
     );
     const responseMode = resolved.response_mode ?? DEFAULT_RESPONSE_MODE;
     const stream = body.stream === true || responseMode === 'stream';
-    if (modelAlias && modelAlias.kind !== 'auto' && !resolved.route) {
-      const alias =
-        modelAlias.kind === 'tier'
-          ? modelAlias.tier
-          : modelAlias.kind === 'specificity'
-            ? modelAlias.category.replace(/_/g, '-')
-            : resolved.header_tier_name
-              ? headerTierNameToModelAlias(resolved.header_tier_name)
-              : modelAlias.id;
-      const dashboardUrl = getDashboardUrl(this.config, agentName, 'routing');
-      throw new BadRequestException(formatManifestError('M411', { alias, dashboardUrl }));
-    }
     if (!resolved.route) {
       this.logger.warn(
         `No route available for agent=${agentId}: ` +
@@ -415,17 +404,29 @@ export class ProxyService {
     specificityOverride: ProxyRequestOptions['specificityOverride'],
     headers: ProxyRequestOptions['headers'],
     modelAlias: ProxyRequestOptions['modelAlias'],
+    agentName?: string,
   ) {
-    if (modelAlias && modelAlias.kind !== 'auto') {
-      return this.resolveService.resolveForAlias(agentId, modelAlias);
-    }
-
     const messages = body.messages as ScorerMessage[];
     const scoringMessages = this.filterScoringMessages(messages);
     const scoringTools = Array.isArray(body.tools) ? body.tools : undefined;
     const isHeartbeat = this.detectHeartbeat(scoringMessages);
     const recentTiers = this.momentum.getRecentTiers(sessionKey);
     const recentCategories = this.momentum.getRecentCategories(sessionKey);
+
+    if (modelAlias && modelAlias.kind !== 'auto') {
+      const resolved =
+        modelAlias.kind === 'tier'
+          ? await this.resolveService.resolveForTier(agentId, modelAlias.tier, 'model_alias')
+          : modelAlias.kind === 'specificity'
+            ? await this.resolveService.resolveForSpecificity(agentId, modelAlias.category)
+            : await this.resolveService.resolveForHeaderTier(agentId, modelAlias.id);
+      assertAliasRouteConfigured(
+        modelAliasLabel(modelAlias),
+        resolved,
+        getDashboardUrl(this.config, agentName, 'routing'),
+      );
+      return resolved;
+    }
 
     return isHeartbeat
       ? this.resolveService.resolveForTier(agentId, 'simple')

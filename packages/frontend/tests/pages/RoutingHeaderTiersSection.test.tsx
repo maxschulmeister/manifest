@@ -86,12 +86,6 @@ vi.mock('../../src/components/HeaderTierCard.js', () => ({
           disable
         </button>
         <button
-          data-testid={`delete-${tier.id}`}
-          onClick={() => (props.onRequestDelete as () => void)?.()}
-        >
-          delete
-        </button>
-        <button
           data-testid={`response-${tier.id}`}
           onClick={() =>
             (props.onResponseModeChange as (mode: 'stream' | 'buffered') => void)('stream')
@@ -136,10 +130,10 @@ vi.mock('../../src/components/HeaderTierModal.js', () => ({
         <button data-testid="tier-modal-close" onClick={() => (props.onClose as () => void)()}>
           close
         </button>
-        {props.onRequestDelete ? (
+        {props.onDelete ? (
           <button
             data-testid="tier-modal-delete"
-            onClick={() => (props.onRequestDelete as (id: string) => void)?.(editing?.id ?? '')}
+            onClick={() => (props.onDelete as (id: string) => void)?.(editing?.id ?? '')}
           >
             delete
           </button>
@@ -488,27 +482,12 @@ describe('RoutingHeaderTiersSection', () => {
     expect(queryByTestId('snippet-modal')).toBeNull();
   });
 
-  it("requires type-to-confirm before deleting a tier from the edit modal", async () => {
+  it("invokes deleteHeaderTier from the modal's delete callback", async () => {
     const { getByTestId } = render(() => (
       <RoutingHeaderTiersSection {...makeProps({ externalTiers: () => [tier1] })} />
     ));
     fireEvent.click(getByTestId('edit-ht-1'));
     fireEvent.click(getByTestId('tier-modal-delete'));
-    expect(mockDeleteHeaderTier).not.toHaveBeenCalled();
-    fireEvent.input(screen.getByTestId('delete-confirm-input'), { target: { value: 'Premium' } });
-    fireEvent.click(screen.getByTestId('delete-confirm-submit'));
-    await waitFor(() => {
-      expect(mockDeleteHeaderTier).toHaveBeenCalledWith('demo', 'ht-1');
-    });
-  });
-
-  it('deletes a tier from the card trash icon after type-to-confirm', async () => {
-    const { getByTestId } = render(() => (
-      <RoutingHeaderTiersSection {...makeProps({ externalTiers: () => [tier1] })} />
-    ));
-    fireEvent.click(getByTestId('delete-ht-1'));
-    fireEvent.input(screen.getByTestId('delete-confirm-input'), { target: { value: 'Premium' } });
-    fireEvent.click(screen.getByTestId('delete-confirm-submit'));
     await waitFor(() => {
       expect(mockDeleteHeaderTier).toHaveBeenCalledWith('demo', 'ht-1');
     });
@@ -541,8 +520,6 @@ describe('RoutingHeaderTiersSection', () => {
     ));
     fireEvent.click(getByTestId('edit-ht-1'));
     fireEvent.click(getByTestId('tier-modal-delete'));
-    fireEvent.input(screen.getByTestId('delete-confirm-input'), { target: { value: 'Premium' } });
-    fireEvent.click(screen.getByTestId('delete-confirm-submit'));
     await waitFor(() => {
       expect(mockToastError).toHaveBeenCalledWith('delete-fail');
     });

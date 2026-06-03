@@ -54,6 +54,21 @@ describe('formatManifestError', () => {
     expect(out).toContain('{dashboardUrl}');
   });
 
+  it('formats M410 with the attempted model and model list', () => {
+    const out = formatManifestError('M410', { model: 'banana', aliases: 'auto, simple' });
+    expect(out).toContain('Unrecognized model "banana"');
+    expect(out).toContain('auto, simple');
+  });
+
+  it('formats M411 with the selected model and dashboard URL', () => {
+    const out = formatManifestError('M411', {
+      alias: 'coding',
+      dashboardUrl: 'https://dash.example/routing',
+    });
+    expect(out).toContain('No model is configured for "coding"');
+    expect(out).toContain('https://dash.example/routing');
+  });
+
   it('appends the docs URL exactly once', () => {
     const out = formatManifestError('M500');
     const matches = out.match(/https:\/\/manifest\.build\/docs\/errors\/M500/g) ?? [];
@@ -66,20 +81,5 @@ describe('formatManifestError', () => {
       expect(out.startsWith(`[🦚 Manifest ${code}]`)).toBe(true);
       expect(out.endsWith(`See ${MANIFEST_ERRORS_DOCS_BASE}/${code}`)).toBe(true);
     }
-  });
-
-  it('formats M410 with the attempted model and alias list', () => {
-    const out = formatManifestError('M410', { model: 'banana', aliases: 'auto, simple' });
-    expect(out).toContain('banana');
-    expect(out).toContain('auto, simple');
-  });
-
-  it('formats M411 with the alias and dashboard URL', () => {
-    const out = formatManifestError('M411', {
-      alias: 'coding',
-      dashboardUrl: 'https://app.example/routing',
-    });
-    expect(out).toContain('coding');
-    expect(out).toContain('https://app.example/routing');
   });
 });

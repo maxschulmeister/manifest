@@ -27,87 +27,68 @@ describe('RoutingAliasService', () => {
     );
   });
 
-  it('always includes auto', async () => {
-    expect(await svc.listConfiguredAliases('agent-1')).toEqual(['auto']);
-  });
-
-  it('includes scoring tier slots when complexity routing is enabled', async () => {
+  it('lists routable builtin tiers and specificity aliases plus custom tier ids', async () => {
     tierService.getTiers.mockResolvedValue([
       {
         tier: 'simple',
         override_route: { provider: 'openai', authType: 'api_key', model: 'gpt-4o-mini' },
         auto_assigned_route: null,
       },
-      {
-        tier: 'default',
-        override_route: { provider: 'openai', authType: 'api_key', model: 'gpt-4o' },
-        auto_assigned_route: null,
-      },
-      {
-        tier: 'reasoning',
-        override_route: null,
-        auto_assigned_route: { provider: 'openai', authType: 'api_key', model: 'o3' },
-      },
+      { tier: 'complex', override_route: null, auto_assigned_route: null },
     ] as never);
-
-    expect(await svc.listConfiguredAliases('agent-1')).toEqual(['auto', 'simple', 'reasoning']);
-  });
-
-  it('includes only the default tier when complexity routing is disabled', async () => {
-    agentRepo.findOne.mockResolvedValue({
-      id: 'agent-1',
-      complexity_routing_enabled: false,
-    } as Agent);
-    tierService.getTiers.mockResolvedValue([
-      {
-        tier: 'simple',
-        override_route: { provider: 'openai', authType: 'api_key', model: 'gpt-4o-mini' },
-        auto_assigned_route: null,
-      },
-      {
-        tier: 'default',
-        override_route: { provider: 'openai', authType: 'api_key', model: 'gpt-4o' },
-        auto_assigned_route: null,
-      },
-    ] as never);
-
-    expect(await svc.listConfiguredAliases('agent-1')).toEqual(['auto', 'default']);
-  });
-
-  it('includes active specificity categories with a route only', async () => {
     specificityService.getActiveAssignments.mockResolvedValue([
       {
-        category: 'coding',
+        category: 'web_browsing',
         is_active: true,
         override_route: { provider: 'anthropic', authType: 'api_key', model: 'claude-sonnet-4' },
         auto_assigned_route: null,
       },
-      {
-        category: 'web_browsing',
-        is_active: true,
-        override_route: null,
-        auto_assigned_route: null,
-      },
+      { category: 'coding', is_active: true, override_route: null, auto_assigned_route: null },
     ] as never);
-
-    expect(await svc.listConfiguredAliases('agent-1')).toEqual(['auto', 'coding']);
-  });
-
-  it('includes enabled custom tiers with a primary model only', async () => {
     headerTierService.list.mockResolvedValue([
       {
-        name: 'Super',
+        id: 'ht-fast',
+        name: 'Fast',
         enabled: true,
         override_route: { provider: 'openai', authType: 'api_key', model: 'gpt-4o' },
       },
-      { name: 'Draft', enabled: true, override_route: null },
+      { id: 'ht-empty', name: 'Empty', enabled: true, override_route: null },
       {
-        name: 'Legacy',
+        id: 'ht-off',
+        name: 'Off',
         enabled: false,
         override_route: { provider: 'openai', authType: 'api_key', model: 'gpt-4o' },
       },
     ] as never);
 
-    expect(await svc.listConfiguredAliases('agent-1')).toEqual(['auto', 'super']);
+    await expect(svc.listRoutableModelIds('agent-1')).resolves.toEqual([
+      'auto',
+      'simple',
+      'web-browsing',
+      'ht-fast',
+    ]);
+  });
+
+  it('classifies static model values without requiring a configured route', async () => {
+    await expect(svc.classifyModel('agent-1', 'reasoning')).resolves.toEqual({
+      kind: 'tier',
+      tier: 'reasoning',
+    });
+    await expect(svc.classifyModel('agent-1', 'coding')).resolves.toEqual({
+      kind: 'specificity',
+      category: 'coding',
+    });
+  });
+
+  it('classifies enabled custom tiers by exact id only', async () => {
+    headerTierService.list.mockResolvedValue([
+      { id: 'ht-fast', name: 'Fast', enabled: true, override_route: null },
+    ] as never);
+
+    await expect(svc.classifyModel('agent-1', 'ht-fast')).resolves.toEqual({
+      kind: 'header_tier',
+      id: 'ht-fast',
+    });
+    await expect(svc.classifyModel('agent-1', 'fast')).resolves.toBeNull();
   });
 });

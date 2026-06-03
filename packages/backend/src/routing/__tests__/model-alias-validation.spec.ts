@@ -1,84 +1,68 @@
 import { BadRequestException } from '@nestjs/common';
 import { assertAliasRouteConfigured, parseModelAliasFromBody } from '../model-alias-validation';
 
-const headerTierService = {
-  findByModelAlias: jest.fn(),
-};
-
 const routingAliasService = {
-  listConfiguredAliases: jest.fn().mockResolvedValue(['auto', 'coding', 'super']),
+  classifyModel: jest.fn(),
+  listAcceptedModelIds: jest.fn(),
 };
 
 describe('parseModelAliasFromBody', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    routingAliasService.listConfiguredAliases.mockResolvedValue(['auto', 'coding', 'super']);
-    headerTierService.findByModelAlias.mockResolvedValue(null);
+    routingAliasService.listAcceptedModelIds.mockResolvedValue(['auto', 'simple', 'ht-fast']);
   });
 
-  it('returns a classified alias for a valid built-in model', async () => {
+  it('returns the classified model value', async () => {
+    routingAliasService.classifyModel.mockResolvedValue({ kind: 'tier', tier: 'simple' });
+
     await expect(
-      parseModelAliasFromBody({ model: 'coding', messages: [] }, 'agent-1', {
-        headerTierService,
+      parseModelAliasFromBody({ model: 'simple', messages: [] }, 'agent-1', {
         routingAliasService,
       }),
-    ).resolves.toEqual({ kind: 'specificity', category: 'coding' });
+    ).resolves.toEqual({ kind: 'tier', tier: 'simple' });
   });
 
-  it('returns header_tier when a custom tier alias matches', async () => {
-    headerTierService.findByModelAlias.mockResolvedValue({ id: 'ht-1', name: 'Super' });
+  it('passes through custom tier ids from the classifier', async () => {
+    routingAliasService.classifyModel.mockResolvedValue({ kind: 'header_tier', id: 'ht-fast' });
+
     await expect(
-      parseModelAliasFromBody({ model: 'super', messages: [] }, 'agent-1', {
-        headerTierService,
+      parseModelAliasFromBody({ model: 'ht-fast', messages: [] }, 'agent-1', {
         routingAliasService,
       }),
-    ).resolves.toEqual({ kind: 'header_tier', id: 'ht-1' });
+    ).resolves.toEqual({ kind: 'header_tier', id: 'ht-fast' });
   });
 
-  it('throws M410 when model is missing', async () => {
+  it('defaults to auto when model is missing', async () => {
     await expect(
       parseModelAliasFromBody({ messages: [] }, 'agent-1', {
-        headerTierService,
         routingAliasService,
       }),
-    ).rejects.toThrow(BadRequestException);
-    try {
-      await parseModelAliasFromBody({ messages: [] }, 'agent-1', {
-        headerTierService,
+    ).resolves.toEqual({ kind: 'auto' });
+  });
+
+  it('throws M410 when model is empty', async () => {
+    await expect(
+      parseModelAliasFromBody({ model: '', messages: [] }, 'agent-1', {
         routingAliasService,
-      });
-    } catch (err) {
-      const msg = (err as BadRequestException).message;
-      expect(msg).toContain('M410');
-      expect(msg).toContain('super');
-      expect(msg).toContain('auto');
-    }
+      }),
+    ).rejects.toThrow(/M410/);
   });
 
   it('throws M410 for an unrecognized model', async () => {
+    routingAliasService.classifyModel.mockResolvedValue(null);
+
     await expect(
       parseModelAliasFromBody({ model: 'banana' }, 'agent-1', {
-        headerTierService,
         routingAliasService,
       }),
-    ).rejects.toThrow(BadRequestException);
-  });
-
-  it('throws M410 when a built-in alias is not configured for the agent', async () => {
-    routingAliasService.listConfiguredAliases.mockResolvedValue(['auto', 'default']);
-    await expect(
-      parseModelAliasFromBody({ model: 'simple' }, 'agent-1', {
-        headerTierService,
-        routingAliasService,
-      }),
-    ).rejects.toThrow(BadRequestException);
+    ).rejects.toThrow(/M410/);
   });
 });
 
 describe('assertAliasRouteConfigured', () => {
   it('throws M411 when route is null', () => {
     expect(() =>
-      assertAliasRouteConfigured('super', { route: null } as never, 'https://dash/routing'),
+      assertAliasRouteConfigured('ht-fast', { route: null } as never, 'https://dash/routing'),
     ).toThrow(BadRequestException);
   });
 

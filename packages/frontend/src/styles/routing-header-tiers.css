@@ -132,18 +132,6 @@
   color: hsl(var(--foreground));
 }
 
-.header-tier-card__title-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.header-tier-card__icon-btn--danger:hover,
-.header-tier-card__icon-btn--danger:focus-visible {
-  color: hsl(var(--destructive));
-}
-
 /* Right: Reset / + Add model + kebab, all in one inline cluster mirroring
    the generalist-card "Reset" placement. */
 .header-tier-card__actions {
@@ -153,8 +141,17 @@
   flex-shrink: 0;
 }
 
-/* Header rule chip (key:value), shown under the title row so the title row
+/* Header rule chips, shown under the title row so the title row
    can stay tidy in narrow card widths. */
+.header-tier-card__rules {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 8px;
+  align-self: flex-start;
+  max-width: 100%;
+}
+
 .header-tier-card__rule {
   display: inline-block;
   font-family: var(--font-mono);
@@ -162,7 +159,6 @@
   color: hsl(var(--muted-foreground));
   background: none;
   padding: 0;
-  margin-bottom: 8px;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;

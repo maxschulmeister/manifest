@@ -59,8 +59,6 @@ export interface Snippet {
   code: string;
 }
 
-const DEFAULT_MODEL_ALIAS = 'auto';
-
 const STORAGE_KEY = 'manifest_setup_framework';
 const TOOLKIT_STORAGE_KEY = 'manifest_setup_toolkit';
 const OPENAI_LANG_STORAGE_KEY = 'manifest_setup_openai_lang';
@@ -84,6 +82,11 @@ export function storeFramework(id: FrameworkId): void {
 }
 
 export type CustomHeaders = Record<string, string>;
+
+function applyModelId(snippet: Snippet, modelId: string): Snippet {
+  if (modelId === 'auto') return snippet;
+  return { ...snippet, code: snippet.code.split('"auto"').join(JSON.stringify(modelId)) };
+}
 
 /**
  * `{"x-key": "value", "x-other": "v"}` rendered for the target language.
@@ -120,8 +123,7 @@ function headerLine(
 function getOpenAIChatPythonSnippet(
   baseUrl: string,
   apiKey: string,
-  customHeaders: CustomHeaders | undefined,
-  model: string,
+  customHeaders?: CustomHeaders,
 ): Snippet {
   const openaiHeaders = headerLine(customHeaders, 'py-kwarg', 'default_headers');
   return {
@@ -134,7 +136,7 @@ client = OpenAI(
 )
 
 response = client.chat.completions.create(
-    model="${model}",
+    model="auto",
     messages=[{"role": "user", "content": "Hello"}],
 )`,
   };
@@ -143,8 +145,7 @@ response = client.chat.completions.create(
 function getOpenAIChatTypeScriptSnippet(
   baseUrl: string,
   apiKey: string,
-  customHeaders: CustomHeaders | undefined,
-  model: string,
+  customHeaders?: CustomHeaders,
 ): Snippet {
   const openaiHeaders = headerLine(customHeaders, 'ts-prop', 'defaultHeaders');
   return {
@@ -157,7 +158,7 @@ const client = new OpenAI({
 });
 
 const response = await client.chat.completions.create({
-  model: "${model}",
+  model: "auto",
   messages: [{ role: "user", content: "Hello" }],
 });`,
   };
@@ -176,8 +177,7 @@ function stripV1Suffix(baseUrl: string): string {
 function getAnthropicPythonSnippet(
   baseUrl: string,
   apiKey: string,
-  customHeaders: CustomHeaders | undefined,
-  model: string,
+  customHeaders?: CustomHeaders,
 ): Snippet {
   const headersLine = headerLine(customHeaders, 'py-kwarg', 'default_headers');
   const url = stripV1Suffix(baseUrl);
@@ -191,7 +191,7 @@ client = Anthropic(
 )
 
 message = client.messages.create(
-    model="${model}",
+    model="auto",
     max_tokens=1024,
     messages=[{"role": "user", "content": "Hello"}],
 )`,
@@ -201,8 +201,7 @@ message = client.messages.create(
 function getAnthropicTypeScriptSnippet(
   baseUrl: string,
   apiKey: string,
-  customHeaders: CustomHeaders | undefined,
-  model: string,
+  customHeaders?: CustomHeaders,
 ): Snippet {
   const headersLine = headerLine(customHeaders, 'ts-prop', 'defaultHeaders');
   const url = stripV1Suffix(baseUrl);
@@ -216,7 +215,7 @@ const client = new Anthropic({
 });
 
 const message = await client.messages.create({
-  model: "${model}",
+  model: "auto",
   max_tokens: 1024,
   messages: [{ role: "user", content: "Hello" }],
 });`,
@@ -226,8 +225,7 @@ const message = await client.messages.create({
 export function getPythonSnippets(
   baseUrl: string,
   apiKey: string,
-  customHeaders: CustomHeaders | undefined,
-  model: string,
+  customHeaders?: CustomHeaders,
 ): Snippet[] {
   const langchainHeaders = headerLine(customHeaders, 'py-kwarg', 'default_headers');
   const openaiHeaders = headerLine(customHeaders, 'py-kwarg', 'default_headers');
@@ -239,7 +237,7 @@ export function getPythonSnippets(
 llm = ChatOpenAI(
     base_url="${baseUrl}",
     api_key="${apiKey}",
-    model="${model}",${langchainHeaders}
+    model="auto",${langchainHeaders}
 )`,
     },
     {
@@ -252,7 +250,7 @@ client = OpenAI(
 )
 
 response = client.responses.create(
-    model="${model}",
+    model="auto",
     input="Hello",
     store=False,
 )`,
@@ -263,8 +261,7 @@ response = client.responses.create(
 export function getVercelPythonSnippet(
   baseUrl: string,
   apiKey: string,
-  customHeaders: CustomHeaders | undefined,
-  model: string,
+  customHeaders?: CustomHeaders,
 ): Snippet {
   const headersLine = headerLine(customHeaders, 'py-kwarg', 'default_headers');
   return {
@@ -278,7 +275,7 @@ client = AIClient(
 )
 
 response = client.generate_text(
-    model="${model}",
+    model="auto",
     prompt="Hello",
 )`,
   };
@@ -287,8 +284,7 @@ response = client.generate_text(
 export function getTypeScriptSnippets(
   baseUrl: string,
   apiKey: string,
-  customHeaders: CustomHeaders | undefined,
-  model: string,
+  customHeaders?: CustomHeaders,
 ): Snippet[] {
   const vercelHeaders = headerLine(customHeaders, 'ts-prop', 'headers');
   const openaiHeaders = headerLine(customHeaders, 'ts-prop', 'defaultHeaders');
@@ -304,7 +300,7 @@ const manifest = createOpenAI({
 });
 
 const { text } = await generateText({
-  model: manifest("${model}"),
+  model: manifest("auto"),
   prompt: "Hello",
 });`,
     },
@@ -318,7 +314,7 @@ const client = new OpenAI({
 });
 
 const response = await client.responses.create({
-  model: "${model}",
+  model: "auto",
   input: "Hello",
   store: false,
 });`,
@@ -326,11 +322,7 @@ const response = await client.responses.create({
   ];
 }
 
-export function getOpenClawSnippet(
-  baseUrl: string,
-  apiKey: string,
-  model: string = DEFAULT_MODEL_ALIAS,
-): string {
+export function getOpenClawSnippet(baseUrl: string, apiKey: string): string {
   // Manifest's cloud proxy speaks OpenAI Chat Completions
   // (`/v1/chat/completions`). OpenClaw's `openai-responses` parser reads
   // assistant text from the Responses API shape (`output[].content[].text`),
@@ -341,10 +333,10 @@ export function getOpenClawSnippet(
     baseUrl,
     api: 'openai-completions',
     apiKey,
-    models: [{ id: model, name: model === 'auto' ? 'Manifest Auto' : model }],
+    models: [{ id: 'auto', name: 'Manifest Auto' }],
   });
   return `openclaw config set models.providers.manifest '${providerJson}'
-openclaw config set agents.defaults.model.primary manifest/${model}
+openclaw config set agents.defaults.model.primary manifest/auto
 openclaw gateway restart`;
 }
 
@@ -400,8 +392,7 @@ openclaw gateway restart`;
 export function getCurlSnippet(
   baseUrl: string,
   apiKey: string,
-  customHeaders: CustomHeaders | undefined,
-  model: string,
+  customHeaders?: CustomHeaders,
 ): Snippet[] {
   // Wrap each header arg in single quotes so embedded double-quotes (already
   // rejected at input validation but defended against here too) can't break
@@ -418,7 +409,7 @@ export function getCurlSnippet(
   -H "Authorization: Bearer ${apiKey}" \\
   -H "Content-Type: application/json" \\
 ${extraHeaders}  -d '{
-    "model": "${model}",
+    "model": "auto",
     "input": "Hello",
     "store": false
   }'`,
@@ -431,17 +422,16 @@ export function getSnippetsForFramework(
   baseUrl: string,
   apiKey: string,
   customHeaders?: CustomHeaders,
-  model: string = DEFAULT_MODEL_ALIAS,
 ): Snippet[] {
   switch (id) {
     case 'python':
-      return getPythonSnippets(baseUrl, apiKey, customHeaders, model);
+      return getPythonSnippets(baseUrl, apiKey, customHeaders);
     case 'typescript':
-      return getTypeScriptSnippets(baseUrl, apiKey, customHeaders, model);
+      return getTypeScriptSnippets(baseUrl, apiKey, customHeaders);
     case 'openclaw':
-      return [{ title: 'OpenClaw CLI', code: getOpenClawSnippet(baseUrl, apiKey, model) }];
+      return [{ title: 'OpenClaw CLI', code: getOpenClawSnippet(baseUrl, apiKey) }];
     case 'curl':
-      return getCurlSnippet(baseUrl, apiKey, customHeaders, model);
+      return getCurlSnippet(baseUrl, apiKey, customHeaders);
   }
 }
 
@@ -488,31 +478,43 @@ export function getSnippetForToolkit(
   openaiLang: OpenAILangId = 'python',
   customHeaders?: CustomHeaders,
   openaiApi: OpenAIApiId = 'responses',
-  model: string = DEFAULT_MODEL_ALIAS,
+  modelId = 'auto',
 ): Snippet {
+  let snippet: Snippet;
   switch (id) {
     case 'openai-sdk':
       if (openaiApi === 'chat-completions') {
-        return openaiLang === 'python'
-          ? getOpenAIChatPythonSnippet(baseUrl, apiKey, customHeaders, model)
-          : getOpenAIChatTypeScriptSnippet(baseUrl, apiKey, customHeaders, model);
+        snippet =
+          openaiLang === 'python'
+            ? getOpenAIChatPythonSnippet(baseUrl, apiKey, customHeaders)
+            : getOpenAIChatTypeScriptSnippet(baseUrl, apiKey, customHeaders);
+        break;
       }
-      return openaiLang === 'python'
-        ? getPythonSnippets(baseUrl, apiKey, customHeaders, model)[1]!
-        : getTypeScriptSnippets(baseUrl, apiKey, customHeaders, model)[1]!;
+      snippet =
+        openaiLang === 'python'
+          ? getPythonSnippets(baseUrl, apiKey, customHeaders)[1]!
+          : getTypeScriptSnippets(baseUrl, apiKey, customHeaders)[1]!;
+      break;
     case 'anthropic-sdk':
-      return openaiLang === 'python'
-        ? getAnthropicPythonSnippet(baseUrl, apiKey, customHeaders, model)
-        : getAnthropicTypeScriptSnippet(baseUrl, apiKey, customHeaders, model);
+      snippet =
+        openaiLang === 'python'
+          ? getAnthropicPythonSnippet(baseUrl, apiKey, customHeaders)
+          : getAnthropicTypeScriptSnippet(baseUrl, apiKey, customHeaders);
+      break;
     case 'vercel-ai-sdk':
-      return openaiLang === 'python'
-        ? getVercelPythonSnippet(baseUrl, apiKey, customHeaders, model)
-        : getTypeScriptSnippets(baseUrl, apiKey, customHeaders, model)[0]!;
+      snippet =
+        openaiLang === 'python'
+          ? getVercelPythonSnippet(baseUrl, apiKey, customHeaders)
+          : getTypeScriptSnippets(baseUrl, apiKey, customHeaders)[0]!;
+      break;
     case 'langchain':
-      return getPythonSnippets(baseUrl, apiKey, customHeaders, model)[0]!;
+      snippet = getPythonSnippets(baseUrl, apiKey, customHeaders)[0]!;
+      break;
     case 'curl':
-      return getCurlSnippet(baseUrl, apiKey, customHeaders, model)[0]!;
+      snippet = getCurlSnippet(baseUrl, apiKey, customHeaders)[0]!;
+      break;
   }
+  return applyModelId(snippet, modelId);
 }
 
 export function getLangForToolkit(id: ToolkitId, openaiLang?: OpenAILangId): string {

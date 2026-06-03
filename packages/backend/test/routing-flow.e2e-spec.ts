@@ -52,7 +52,7 @@ const bearer = (r: request.Test) =>
 describe('Routing disabled → null model (OpenClaw uses Gemini default)', () => {
   it('resolve returns null model/provider when no providers connected', async () => {
     const res = await bearer(api().post('/api/v1/routing/resolve'))
-      .send({ model: 'auto', messages: [{ role: 'user', content: 'hello' }] })
+      .send({ messages: [{ role: 'user', content: 'hello' }] })
       .expect(200);
 
     expect(res.body.route).toBeNull();
@@ -64,7 +64,6 @@ describe('Routing disabled → null model (OpenClaw uses Gemini default)', () =>
   it('resolve returns null for complex queries too when disabled', async () => {
     const res = await bearer(api().post('/api/v1/routing/resolve'))
       .send({
-        model: 'auto',
         messages: [
           {
             role: 'user',
@@ -148,7 +147,7 @@ describe('Routing enabled → scorer routes by query complexity', () => {
 
   it('routes "hi" → simple tier with cheapest model', async () => {
     const res = await bearer(api().post('/api/v1/routing/resolve'))
-      .send({ model: 'auto', messages: [{ role: 'user', content: 'hi' }] })
+      .send({ messages: [{ role: 'user', content: 'hi' }] })
       .expect(200);
 
     expect(res.body.tier).toBe('simple');
@@ -159,7 +158,7 @@ describe('Routing enabled → scorer routes by query complexity', () => {
 
   it('routes "thanks" → simple tier', async () => {
     const res = await bearer(api().post('/api/v1/routing/resolve'))
-      .send({ model: 'auto', messages: [{ role: 'user', content: 'thanks' }] })
+      .send({ messages: [{ role: 'user', content: 'thanks' }] })
       .expect(200);
 
     expect(res.body.tier).toBe('simple');
@@ -168,7 +167,7 @@ describe('Routing enabled → scorer routes by query complexity', () => {
 
   it('routes "what is a dog" → simple tier', async () => {
     const res = await bearer(api().post('/api/v1/routing/resolve'))
-      .send({ model: 'auto', messages: [{ role: 'user', content: 'what is a dog' }] })
+      .send({ messages: [{ role: 'user', content: 'what is a dog' }] })
       .expect(200);
 
     expect(res.body.tier).toBe('simple');
@@ -178,7 +177,6 @@ describe('Routing enabled → scorer routes by query complexity', () => {
   it('routes complex React request → complex tier with high-quality model', async () => {
     const res = await bearer(api().post('/api/v1/routing/resolve'))
       .send({
-        model: 'auto',
         messages: [
           {
             role: 'user',
@@ -199,7 +197,6 @@ describe('Routing enabled → scorer routes by query complexity', () => {
   it('routes math proof → reasoning tier with reasoning-capable model', async () => {
     const res = await bearer(api().post('/api/v1/routing/resolve'))
       .send({
-        model: 'auto',
         messages: [
           {
             role: 'user',
@@ -219,7 +216,6 @@ describe('Routing enabled → scorer routes by query complexity', () => {
   it('routes multi-step security audit → complex tier', async () => {
     const res = await bearer(api().post('/api/v1/routing/resolve'))
       .send({
-        model: 'auto',
         messages: [
           {
             role: 'user',
@@ -239,7 +235,6 @@ describe('Routing enabled → scorer routes by query complexity', () => {
     // branch in applyTierFloors is the thing being exercised.
     const res = await bearer(api().post('/api/v1/routing/resolve'))
       .send({
-        model: 'auto',
         messages: [
           {
             role: 'user',
@@ -258,7 +253,6 @@ describe('Routing enabled → scorer routes by query complexity', () => {
   it('system messages do not inflate scoring', async () => {
     const res = await bearer(api().post('/api/v1/routing/resolve'))
       .send({
-        model: 'auto',
         messages: [
           {
             role: 'system',
@@ -381,7 +375,7 @@ describe('Routing disabled after deactivation → falls back to null', () => {
       .expect(201);
 
     const res = await bearer(api().post('/api/v1/routing/resolve'))
-      .send({ model: 'auto', messages: [{ role: 'user', content: 'hello' }] })
+      .send({ messages: [{ role: 'user', content: 'hello' }] })
       .expect(200);
 
     expect(res.body.route).toBeNull();
@@ -417,7 +411,7 @@ describe('Routing disabled after deactivation → falls back to null', () => {
     await app.get(TierAutoAssignService).recalculate(TEST_AGENT_ID);
 
     const res = await bearer(api().post('/api/v1/routing/resolve'))
-      .send({ model: 'auto', messages: [{ role: 'user', content: 'hi' }] })
+      .send({ messages: [{ role: 'user', content: 'hi' }] })
       .expect(200);
 
     expect(res.body.route).not.toBeNull();

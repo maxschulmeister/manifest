@@ -1,5 +1,4 @@
-import { type Component, createResource, Show } from 'solid-js';
-import { headerTierNameToModelAlias } from 'manifest-shared';
+import { type Component, createResource } from 'solid-js';
 import FrameworkSnippets from './FrameworkSnippets.jsx';
 import { getAgentKey } from '../services/api.js';
 import type { HeaderTier } from '../services/api/header-tiers.js';
@@ -11,9 +10,8 @@ interface Props {
 }
 
 /**
- * Modal that shows SDK-specific code snippets for routing to this custom tier
- * via `model: "<slug>"`. Reuses {@link FrameworkSnippets} with optional header
- * rules when configured.
+ * Modal that shows SDK-specific code snippets for selecting this custom tier
+ * through the OpenAI-compatible `model` field.
  */
 const HeaderTierSnippetModal: Component<Props> = (props) => {
   const [keyData] = createResource(
@@ -27,16 +25,9 @@ const HeaderTierSnippetModal: Component<Props> = (props) => {
     return `${window.location.origin}/v1`;
   };
 
-  const modelAlias = (): string => headerTierNameToModelAlias(props.tier.name);
-
-  const customHeaders = (): Record<string, string> => {
-    const key = props.tier.header_key?.trim();
-    const value = props.tier.header_value?.trim();
-    if (!key || !value) return {};
-    return { [key]: value };
-  };
-
-  const primaryModel = (): string | null => props.tier.override_route?.model ?? null;
+  const modelText = (): string => props.tier.id;
+  const targetModelText = (): string =>
+    props.tier.override_route?.model ?? 'no model assigned (falls back to default routing)';
 
   return (
     <div
@@ -60,7 +51,7 @@ const HeaderTierSnippetModal: Component<Props> = (props) => {
             id="header-tier-snippet-title"
             style="margin: 0; font-size: var(--font-size-lg); font-weight: 600;"
           >
-            Route to “{props.tier.name}”
+            Use the “{props.tier.name}” model ID
           </h2>
           <button class="modal__close" onClick={() => props.onClose()} aria-label="Close">
             <svg
@@ -76,19 +67,15 @@ const HeaderTierSnippetModal: Component<Props> = (props) => {
           </button>
         </div>
         <p class="modal-card__desc" style="margin-top: 0;">
-          Set <code>model: "{modelAlias()}"</code> on your requests to use this tier's stack
-          <Show when={primaryModel()}>
-            , currently <code>{primaryModel()}</code>
-          </Show>
-          <Show when={!primaryModel()}> (assign a primary model on the tier card first)</Show>.
+          Set <code>model</code> to <code>{modelText()}</code> to route through{' '}
+          <code>{targetModelText()}</code>.
         </p>
 
         <FrameworkSnippets
           apiKey={keyData()?.apiKey ?? null}
           keyPrefix={keyData()?.keyPrefix ?? null}
           baseUrl={baseUrl()}
-          customHeaders={customHeaders()}
-          model={modelAlias()}
+          modelId={modelText()}
         />
 
         <div style="display: flex; justify-content: flex-end; margin-top: 16px;">

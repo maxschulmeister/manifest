@@ -66,7 +66,10 @@ const specCatalog: ProviderParamSpecCatalog = [
 
 describe('ProxyService — orchestration', () => {
   let resolveService: jest.Mocked<
-    Pick<ResolveService, 'resolve' | 'resolveForTier' | 'resolveForAlias'>
+    Pick<
+      ResolveService,
+      'resolve' | 'resolveForTier' | 'resolveForSpecificity' | 'resolveForHeaderTier'
+    >
   >;
   let providerKeyService: jest.Mocked<
     Pick<ProviderKeyService, 'getProviderApiKey' | 'getProviderRegion'>
@@ -102,7 +105,8 @@ describe('ProxyService — orchestration', () => {
     resolveService = {
       resolve: jest.fn(),
       resolveForTier: jest.fn(),
-      resolveForAlias: jest.fn(),
+      resolveForSpecificity: jest.fn(),
+      resolveForHeaderTier: jest.fn(),
     };
     providerKeyService = {
       getProviderApiKey: jest.fn().mockResolvedValue('decrypted-key'),
@@ -217,58 +221,6 @@ describe('ProxyService — orchestration', () => {
     });
   });
 
-  describe('model alias routing', () => {
-    it('calls resolveForAlias and skips scoring when a tier alias is set', async () => {
-      resolveService.resolveForAlias.mockResolvedValue({
-        tier: 'coding' as never,
-        route: { provider: 'anthropic', authType: 'api_key', model: 'claude-sonnet-4' },
-        fallback_routes: null,
-        confidence: 1,
-        score: 0,
-        reason: 'model_alias',
-        specificity_category: 'coding',
-      });
-      fallbackService.tryForwardToProvider.mockResolvedValue({
-        response: okResponse(200),
-        isGoogle: false,
-        isAnthropic: false,
-        isChatGpt: false,
-      });
-
-      await svc.proxyRequest(
-        baseOpts({
-          modelAlias: { kind: 'specificity', category: 'coding' },
-        }),
-      );
-
-      expect(resolveService.resolveForAlias).toHaveBeenCalledWith('agent-1', {
-        kind: 'specificity',
-        category: 'coding',
-      });
-      expect(resolveService.resolve).not.toHaveBeenCalled();
-    });
-
-    it('throws M411 when an alias resolves to no route', async () => {
-      resolveService.resolveForAlias.mockResolvedValue({
-        tier: 'standard',
-        route: null,
-        fallback_routes: null,
-        confidence: 1,
-        score: 0,
-        reason: 'model_alias',
-        specificity_category: 'coding',
-      });
-
-      await expect(
-        svc.proxyRequest(
-          baseOpts({
-            modelAlias: { kind: 'specificity', category: 'coding' },
-          }),
-        ),
-      ).rejects.toThrow(/M411/);
-    });
-  });
-
   describe('limit enforcement', () => {
     it('returns a friendly limit response when checkLimits flags an excess', async () => {
       limitCheck.checkLimits.mockResolvedValue({
@@ -322,6 +274,112 @@ describe('ProxyService — orchestration', () => {
       const result = await svc.proxyRequest(baseOpts());
       const body = await result.forward.response.text();
       expect(body).toContain('M101');
+    });
+  });
+
+  describe('model-param routing', () => {
+    beforeEach(() => {
+      fallbackService.tryForwardToProvider.mockResolvedValue({
+        response: okResponse(200),
+        isGoogle: false,
+        isAnthropic: false,
+        isChatGpt: false,
+      });
+    });
+
+    it('routes builtin tier model values directly to that tier', async () => {
+      resolveService.resolveForTier.mockResolvedValue({
+        tier: 'simple',
+        route: route('openai', 'api_key', 'gpt-4o-mini'),
+        fallback_routes: null,
+        confidence: 1,
+        score: 0,
+        reason: 'model_alias',
+      });
+
+      const result = await svc.proxyRequest(
+        baseOpts({ modelAlias: { kind: 'tier', tier: 'simple' } }),
+      );
+
+      expect(resolveService.resolveForTier).toHaveBeenCalledWith(
+        'agent-1',
+        'simple',
+        'model_alias',
+      );
+      expect(resolveService.resolve).not.toHaveBeenCalled();
+      expect(result.meta).toMatchObject({
+        tier: 'simple',
+        model: 'gpt-4o-mini',
+        reason: 'model_alias',
+      });
+    });
+
+    it('routes specificity model values directly to that specificity assignment', async () => {
+      resolveService.resolveForSpecificity.mockResolvedValue({
+        tier: 'standard',
+        route: route('anthropic', 'api_key', 'claude-sonnet-4'),
+        fallback_routes: null,
+        confidence: 1,
+        score: 0,
+        reason: 'model_alias',
+        specificity_category: 'coding',
+      });
+
+      const result = await svc.proxyRequest(
+        baseOpts({ modelAlias: { kind: 'specificity', category: 'coding' } }),
+      );
+
+      expect(resolveService.resolveForSpecificity).toHaveBeenCalledWith('agent-1', 'coding');
+      expect(resolveService.resolve).not.toHaveBeenCalled();
+      expect(result.meta).toMatchObject({
+        tier: 'standard',
+        model: 'claude-sonnet-4',
+        reason: 'model_alias',
+        specificity_category: 'coding',
+      });
+    });
+
+    it('routes custom model values by header tier id', async () => {
+      resolveService.resolveForHeaderTier.mockResolvedValue({
+        tier: 'standard',
+        route: route('xai', 'api_key', 'grok-4'),
+        fallback_routes: null,
+        confidence: 1,
+        score: 0,
+        reason: 'model_alias',
+        header_tier_id: 'ht-fast',
+        header_tier_name: 'Fast',
+        header_tier_color: 'blue',
+      });
+
+      const result = await svc.proxyRequest(
+        baseOpts({ modelAlias: { kind: 'header_tier', id: 'ht-fast' } }),
+      );
+
+      expect(resolveService.resolveForHeaderTier).toHaveBeenCalledWith('agent-1', 'ht-fast');
+      expect(resolveService.resolve).not.toHaveBeenCalled();
+      expect(result.meta).toMatchObject({
+        model: 'grok-4',
+        reason: 'model_alias',
+        header_tier_id: 'ht-fast',
+        header_tier_name: 'Fast',
+      });
+    });
+
+    it('throws M411 for recognized model values without a configured route', async () => {
+      resolveService.resolveForTier.mockResolvedValue({
+        tier: 'reasoning',
+        route: null,
+        fallback_routes: null,
+        confidence: 1,
+        score: 0,
+        reason: 'model_alias',
+      });
+
+      await expect(
+        svc.proxyRequest(baseOpts({ modelAlias: { kind: 'tier', tier: 'reasoning' } })),
+      ).rejects.toThrow(/M411/);
+      expect(fallbackService.tryForwardToProvider).not.toHaveBeenCalled();
     });
   });
 

@@ -171,7 +171,7 @@ describe('/v1/messages cache token round-trip (#1871)', () => {
     };
 
     const res = await postMessages({
-      model: MODEL,
+      model: 'auto',
       max_tokens: 32,
       system: [
         {
@@ -217,7 +217,7 @@ describe('/v1/messages cache token round-trip (#1871)', () => {
     };
 
     const res = await postMessages({
-      model: MODEL,
+      model: 'auto',
       max_tokens: 32,
       system: [
         {

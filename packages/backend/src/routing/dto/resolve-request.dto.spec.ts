@@ -8,29 +8,40 @@ function toDto(data: Record<string, unknown>): ResolveRequestDto {
 }
 
 describe('ResolveRequestDto', () => {
-  it('should pass with valid messages and model alias', async () => {
+  it('should pass with valid messages', async () => {
     const dto = toDto({
-      model: 'auto',
       messages: [{ role: 'user', content: 'hello' }],
     });
     const errors = await validate(dto, { whitelist: true, forbidNonWhitelisted: true });
     expect(errors).toHaveLength(0);
   });
 
-  it('should fail when model is missing', async () => {
-    const dto = toDto({ messages: [{ role: 'user', content: 'hello' }] });
+  it('should accept an optional model selector', async () => {
+    const dto = toDto({
+      model: 'coding',
+      messages: [{ role: 'user', content: 'hello' }],
+    });
+    const errors = await validate(dto, { whitelist: true, forbidNonWhitelisted: true });
+    expect(errors).toHaveLength(0);
+  });
+
+  it('should reject an empty model selector', async () => {
+    const dto = toDto({
+      model: '',
+      messages: [{ role: 'user', content: 'hello' }],
+    });
     const errors = await validate(dto);
     expect(errors.length).toBeGreaterThan(0);
   });
 
   it('should fail when messages is missing', async () => {
-    const dto = toDto({ model: 'auto' });
+    const dto = toDto({});
     const errors = await validate(dto);
     expect(errors.length).toBeGreaterThan(0);
   });
 
   it('should fail when messages is empty array', async () => {
-    const dto = toDto({ model: 'auto', messages: [] });
+    const dto = toDto({ messages: [] });
     // Empty array is still valid as an array (class-validator doesn't enforce min length)
     // But we accept empty arrays at the DTO level - the scorer handles it
     const errors = await validate(dto);
@@ -39,7 +50,6 @@ describe('ResolveRequestDto', () => {
 
   it('should accept optional tools array', async () => {
     const dto = toDto({
-      model: 'auto',
       messages: [{ role: 'user', content: 'test' }],
       tools: [{ name: 'search' }],
     });
@@ -49,7 +59,6 @@ describe('ResolveRequestDto', () => {
 
   it('should accept optional max_tokens as number', async () => {
     const dto = toDto({
-      model: 'auto',
       messages: [{ role: 'user', content: 'test' }],
       max_tokens: 1000,
     });
@@ -59,7 +68,6 @@ describe('ResolveRequestDto', () => {
 
   it('should accept valid recentTiers', async () => {
     const dto = toDto({
-      model: 'auto',
       messages: [{ role: 'user', content: 'test' }],
       recentTiers: ['simple', 'standard', 'complex'],
     });
@@ -69,7 +77,6 @@ describe('ResolveRequestDto', () => {
 
   it('should reject invalid tier values in recentTiers', async () => {
     const dto = toDto({
-      model: 'auto',
       messages: [{ role: 'user', content: 'test' }],
       recentTiers: ['invalid_tier'],
     });
@@ -79,7 +86,6 @@ describe('ResolveRequestDto', () => {
 
   it('should accept tool_choice', async () => {
     const dto = toDto({
-      model: 'auto',
       messages: [{ role: 'user', content: 'test' }],
       tool_choice: 'auto',
     });

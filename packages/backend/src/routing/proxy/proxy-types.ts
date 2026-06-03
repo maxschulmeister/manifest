@@ -1,8 +1,8 @@
 import type { IncomingHttpHeaders } from 'http';
-import type { ModelAliasClassification } from 'manifest-shared';
 import { ProviderEndpoint } from './provider-endpoints';
 import type { ThinkingBlock } from './thinking-block-cache';
 import { CallerAttribution } from './caller-classifier';
+import type { ModelAliasClassification } from 'manifest-shared';
 
 /**
  * Optional lookup to re-inject cached thought_signature values that were
@@ -79,6 +79,6 @@ export interface ProxyRequestOptions {
   specificityOverride?: string;
   callerAttribution?: CallerAttribution | null;
   headers?: IncomingHttpHeaders;
-  /** Classified `body.model` alias; `auto` keeps the full routing pipeline. */
+  /** Classified `body.model`; `auto` keeps the full routing pipeline. */
   modelAlias?: ModelAliasClassification;
 }

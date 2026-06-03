@@ -15,7 +15,6 @@ import {
   modelAliasLabel,
   parseModelAliasFromBody,
 } from '../model-alias-validation';
-import { HeaderTierService } from '../header-tiers/header-tier.service';
 import { RoutingAliasService } from '../routing-alias.service';
 import { getDashboardUrl } from '../proxy/proxy-friendly-response';
 
@@ -44,7 +43,6 @@ export class ResolveController {
     private readonly resolveService: ResolveService,
     private readonly providerService: ProviderService,
     private readonly config: ConfigService,
-    private readonly headerTierService: HeaderTierService,
     private readonly routingAliasService: RoutingAliasService,
   ) {}
 
@@ -58,20 +56,23 @@ export class ResolveController {
     const modelAlias = await parseModelAliasFromBody(
       body as unknown as Record<string, unknown>,
       agentId,
-      {
-        headerTierService: this.headerTierService,
-        routingAliasService: this.routingAliasService,
-      },
+      { routingAliasService: this.routingAliasService },
     );
     if (modelAlias.kind !== 'auto') {
-      const resolved = await this.resolveService.resolveForAlias(agentId, modelAlias);
+      const resolved =
+        modelAlias.kind === 'tier'
+          ? await this.resolveService.resolveForTier(agentId, modelAlias.tier, 'model_alias')
+          : modelAlias.kind === 'specificity'
+            ? await this.resolveService.resolveForSpecificity(agentId, modelAlias.category)
+            : await this.resolveService.resolveForHeaderTier(agentId, modelAlias.id);
       assertAliasRouteConfigured(
-        modelAliasLabel(modelAlias, resolved.header_tier_name),
+        modelAliasLabel(modelAlias),
         resolved,
         getDashboardUrl(this.config, agentName, 'routing'),
       );
       return resolved;
     }
+
     return this.resolveService.resolve(
       agentId,
       body.messages as { role: string; content?: unknown; [k: string]: unknown }[],

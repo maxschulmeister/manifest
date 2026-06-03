@@ -25,11 +25,10 @@ interface Props {
   /**
    * Extra request headers to weave into every snippet (OpenAI's defaultHeaders,
    * Vercel AI's headers, LangChain's configuration.defaultHeaders, curl -H).
-   * Used by the header-tier "How to send this" modal.
    */
   customHeaders?: Record<string, string>;
-  /** Routing alias for the `model` field in generated snippets. Defaults to `auto`. */
-  model?: string;
+  /** Request `model` value to render. Defaults to Manifest auto-routing. */
+  modelId?: string;
 }
 
 const EyeOpen: Component = () => (
@@ -98,8 +97,7 @@ const FrameworkSnippets: Component<Props> = (props) => {
     storeOpenAILang(id);
   };
 
-  const modelAlias = () => props.model ?? 'auto';
-
+  const modelId = () => props.modelId ?? 'auto';
   const snippet = () =>
     getSnippetForToolkit(
       activeTab(),
@@ -108,7 +106,7 @@ const FrameworkSnippets: Component<Props> = (props) => {
       openaiLang(),
       props.customHeaders,
       openaiApi(),
-      modelAlias(),
+      modelId(),
     );
   const snippetForCopy = () =>
     getSnippetForToolkit(
@@ -118,7 +116,7 @@ const FrameworkSnippets: Component<Props> = (props) => {
       openaiLang(),
       props.customHeaders,
       openaiApi(),
-      modelAlias(),
+      modelId(),
     );
   const language = () => getLangForToolkit(activeTab(), openaiLang());
 
@@ -249,8 +247,8 @@ const FrameworkSnippets: Component<Props> = (props) => {
         <div class="setup-onboard-fields__row" role="listitem">
           <span class="setup-onboard-fields__label">Model</span>
           <span class="setup-onboard-fields__value">
-            <code>{modelAlias()}</code>
-            <CopyButton text={modelAlias()} />
+            <code>{modelId()}</code>
+            <CopyButton text={modelId()} />
           </span>
         </div>
         <For each={headerEntries()}>

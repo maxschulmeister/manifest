@@ -17,13 +17,9 @@ vi.mock("../../src/services/toast-store.js", () => ({
   toast: { error: (...args: unknown[]) => mockToastError(...args), success: vi.fn(), warning: vi.fn() },
 }));
 
-vi.mock("manifest-shared", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("manifest-shared")>();
-  return {
-    ...actual,
-    TIER_COLORS: ["indigo", "rose", "amber", "emerald"],
-  };
-});
+vi.mock("manifest-shared", () => ({
+  TIER_COLORS: ["indigo", "rose", "amber", "emerald"],
+}));
 
 type Suggestion = { label: string; value: string; group?: string; sublabel?: string };
 const comboCalls: Array<Record<string, unknown>> = [];
@@ -99,7 +95,7 @@ describe("HeaderTierModal", () => {
       expect(container.querySelector("#header-tier-modal-title")?.textContent).toBe(
         "Create custom tier",
       );
-      expect(container.textContent).toContain("model set to the slug");
+      expect(container.textContent).toContain("Custom routing lets you identify");
     });
 
     it("renders the close button when no onBack handler is provided", () => {
@@ -189,35 +185,6 @@ describe("HeaderTierModal", () => {
       const overlay = container.querySelector(".modal-overlay") as HTMLElement;
       fireEvent.click(overlay);
       expect(onClose).toHaveBeenCalledTimes(1);
-    });
-
-    it("creates a tier without header match rules", async () => {
-      const onSaved = vi.fn();
-      const { container } = render(() => (
-        <HeaderTierModal
-          agentName="demo"
-          existingTiers={[]}
-          onClose={vi.fn()}
-          onSaved={onSaved}
-        />
-      ));
-      fireEvent.input(container.querySelector("#header-tier-name") as HTMLInputElement, {
-        target: { value: "super" },
-      });
-      fireEvent.click(
-        Array.from(container.querySelectorAll("button")).find((b) =>
-          b.textContent?.includes("Create tier"),
-        ) as HTMLButtonElement,
-      );
-
-      await waitFor(() => {
-        expect(mockCreateHeaderTier).toHaveBeenCalledWith("demo", {
-          name: "super",
-          header_key: null,
-          header_value: null,
-          badge_color: "indigo",
-        });
-      });
     });
 
     it("submits the create payload when the form is valid", async () => {
@@ -522,7 +489,7 @@ describe("HeaderTierModal", () => {
       });
     });
 
-    it("renders the Delete button when onRequestDelete is provided", () => {
+    it("renders the Delete button when onDelete is provided", () => {
       const { container } = render(() => (
         <HeaderTierModal
           agentName="demo"
@@ -530,14 +497,15 @@ describe("HeaderTierModal", () => {
           editing={existingTier}
           onClose={vi.fn()}
           onSaved={vi.fn()}
-          onRequestDelete={vi.fn()}
+          onDelete={vi.fn()}
         />
       ));
       expect(container.querySelector(".header-tier-modal__delete-btn")).not.toBeNull();
     });
 
-    it("calls onRequestDelete when Delete tier is clicked", () => {
-      const onRequestDelete = vi.fn();
+    it("calls onDelete when the user confirms the delete prompt", () => {
+      const onDelete = vi.fn();
+      vi.stubGlobal("confirm", vi.fn().mockReturnValue(true));
       const { container } = render(() => (
         <HeaderTierModal
           agentName="demo"
@@ -545,13 +513,34 @@ describe("HeaderTierModal", () => {
           editing={existingTier}
           onClose={vi.fn()}
           onSaved={vi.fn()}
-          onRequestDelete={onRequestDelete}
+          onDelete={onDelete}
         />
       ));
       fireEvent.click(
         container.querySelector(".header-tier-modal__delete-btn") as HTMLButtonElement,
       );
-      expect(onRequestDelete).toHaveBeenCalledWith(existingTier.id);
+      expect(onDelete).toHaveBeenCalledWith(existingTier.id);
+      vi.unstubAllGlobals();
+    });
+
+    it("does not call onDelete when the user cancels the delete prompt", () => {
+      const onDelete = vi.fn();
+      vi.stubGlobal("confirm", vi.fn().mockReturnValue(false));
+      const { container } = render(() => (
+        <HeaderTierModal
+          agentName="demo"
+          existingTiers={[existingTier]}
+          editing={existingTier}
+          onClose={vi.fn()}
+          onSaved={vi.fn()}
+          onDelete={onDelete}
+        />
+      ));
+      fireEvent.click(
+        container.querySelector(".header-tier-modal__delete-btn") as HTMLButtonElement,
+      );
+      expect(onDelete).not.toHaveBeenCalled();
+      vi.unstubAllGlobals();
     });
   });
 

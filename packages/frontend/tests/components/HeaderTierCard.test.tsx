@@ -298,7 +298,7 @@ describe('HeaderTierCard', () => {
     mockClearHeaderTierFallbacks.mockResolvedValue(undefined);
   });
 
-  it('renders the tier name and the header rule', () => {
+  it('renders the tier name, header rule, and stable model id', () => {
     const { container } = render(() => (
       <HeaderTierCard
         agentName="demo"
@@ -313,6 +313,7 @@ describe('HeaderTierCard', () => {
     expect(container.textContent).toContain('Premium');
     expect(container.textContent).toContain('x-manifest-tier');
     expect(container.textContent).toContain('premium');
+    expect(container.textContent).toContain('model: "ht-1"');
   });
 
   it('renders the override_route.model display label', () => {
@@ -618,7 +619,7 @@ describe('HeaderTierCard', () => {
     });
   });
 
-  it('opens the kebab menu and exposes Send / Edit / Disable', () => {
+  it('opens the kebab menu and exposes model ID / Edit / Disable', () => {
     const onEdit = vi.fn();
     const onDisable = vi.fn();
     const { container } = render(() => (
@@ -638,10 +639,10 @@ describe('HeaderTierCard', () => {
     fireEvent.click(kebab);
     expect(container.querySelector('.header-tier-card__menu')).not.toBeNull();
     const items = Array.from(container.querySelectorAll('.header-tier-card__menu-item'));
-    expect(items.map((b) => b.textContent)).toEqual(['Send this header', 'Edit tier', 'Disable']);
+    expect(items.map((b) => b.textContent)).toEqual(['Use model ID', 'Edit tier', 'Disable']);
   });
 
-  it('opens the snippet modal when Send this header is clicked', () => {
+  it('opens the snippet modal when Use model ID is clicked', () => {
     const { container, queryByTestId } = render(() => (
       <HeaderTierCard
         agentName="demo"
@@ -656,7 +657,7 @@ describe('HeaderTierCard', () => {
     fireEvent.click(container.querySelector('.header-tier-card__icon-btn') as HTMLButtonElement);
     fireEvent.click(
       Array.from(container.querySelectorAll('.header-tier-card__menu-item')).find((b) =>
-        b.textContent?.includes('Send this header'),
+        b.textContent?.includes('Use model ID'),
       ) as HTMLButtonElement,
     );
     expect(queryByTestId('snippet-modal')).not.toBeNull();

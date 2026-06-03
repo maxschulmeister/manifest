@@ -4,11 +4,8 @@ import { Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import type { AuthType, ModelRoute, ResponseMode } from 'manifest-shared';
 import {
-  classifyModelAlias,
   DEFAULT_RESPONSE_MODE,
   DEFAULT_OUTPUT_MODALITY,
-  isSafeHeaderTierModelAlias,
-  headerTierNameToModelAlias,
   TIER_COLORS,
   type TierColor,
 } from 'manifest-shared';
@@ -32,15 +29,15 @@ const MAX_HEADER_VALUE_LEN = 128;
 
 export interface CreateHeaderTierInput {
   name: string;
-  header_key?: string | null;
-  header_value?: string | null;
+  header_key: string;
+  header_value: string;
   badge_color: TierColor;
 }
 
 export interface UpdateHeaderTierInput {
   name?: string;
-  header_key?: string | null;
-  header_value?: string | null;
+  header_key?: string;
+  header_value?: string;
   badge_color?: TierColor;
 }
 
@@ -52,14 +49,6 @@ export class HeaderTierService {
     private readonly routingCache: RoutingCacheService,
     private readonly discoveryService: ModelDiscoveryService,
   ) {}
-
-  /** Resolve a custom tier by its `model` alias (slug of the display name). */
-  async findByModelAlias(agentId: string, alias: string): Promise<HeaderTier | null> {
-    const normalized = headerTierNameToModelAlias(alias);
-    if (!isSafeHeaderTierModelAlias(normalized)) return null;
-    const rows = await this.list(agentId);
-    return rows.find((t) => t.enabled && headerTierNameToModelAlias(t.name) === normalized) ?? null;
-  }
 
   async list(agentId: string): Promise<HeaderTier[]> {
     const cached = this.routingCache.getHeaderTiers(agentId);
@@ -79,8 +68,8 @@ export class HeaderTierService {
     input: CreateHeaderTierInput,
   ): Promise<HeaderTier> {
     const name = this.validateName(input.name);
-    const headerKey = this.validateHeaderKey(input.header_key ?? null);
-    const headerValue = this.validateHeaderValue(input.header_value ?? null, headerKey);
+    const headerKey = this.validateHeaderKey(input.header_key);
+    const headerValue = this.validateHeaderValue(input.header_value);
     const badgeColor = this.validateColor(input.badge_color);
 
     const existing = await this.repo.find({ where: { agent_id: agentId } });
@@ -128,7 +117,7 @@ export class HeaderTierService {
       row.header_key = this.validateHeaderKey(patch.header_key);
     }
     if (patch.header_value !== undefined) {
-      row.header_value = this.validateHeaderValue(patch.header_value, row.header_key);
+      row.header_value = this.validateHeaderValue(patch.header_value);
     }
     if (patch.badge_color !== undefined) {
       row.badge_color = this.validateColor(patch.badge_color);
@@ -333,19 +322,12 @@ export class HeaderTierService {
     if (name.length > MAX_NAME_LEN) {
       throw new BadRequestException(`Name must be ${MAX_NAME_LEN} characters or fewer`);
     }
-    if (name.includes('/')) {
-      throw new BadRequestException('Name cannot contain "/"');
-    }
-    const alias = headerTierNameToModelAlias(name);
-    if (!isSafeHeaderTierModelAlias(alias)) {
-      throw new BadRequestException('Name must produce a valid model alias');
-    }
     return name;
   }
 
-  private validateHeaderKey(raw: string | null): string | null {
+  private validateHeaderKey(raw: string): string {
     const key = (raw ?? '').trim().toLowerCase();
-    if (!key) return null;
+    if (!key) throw new BadRequestException('Header key is required');
     if (!HEADER_KEY_RE.test(key)) {
       throw new BadRequestException(
         `Header keys can only contain lowercase letters, digits, and hyphens`,
@@ -359,14 +341,9 @@ export class HeaderTierService {
     return key;
   }
 
-  private validateHeaderValue(raw: string | null, headerKey: string | null): string | null {
+  private validateHeaderValue(raw: string): string {
     const val = (raw ?? '').trim();
-    if (!val) {
-      if (headerKey) {
-        throw new BadRequestException('Header value is required when a header key is set');
-      }
-      return null;
-    }
+    if (!val) throw new BadRequestException('Header value is required');
     if (val.length > MAX_HEADER_VALUE_LEN) {
       throw new BadRequestException(
         `Header value must be ${MAX_HEADER_VALUE_LEN} characters or fewer`,
@@ -387,28 +364,9 @@ export class HeaderTierService {
     if (existing.some((t) => t.name.toLowerCase() === lower)) {
       throw new BadRequestException('A tier with this name already exists');
     }
-    const alias = headerTierNameToModelAlias(name);
-    if (!alias) {
-      throw new BadRequestException(
-        'Name must contain at least one allowed character (a-z, 0-9, . - @ :)',
-      );
-    }
-    if (classifyModelAlias(alias)) {
-      throw new BadRequestException(
-        'This name conflicts with a built-in routing alias — pick a different name',
-      );
-    }
-    if (existing.some((t) => headerTierNameToModelAlias(t.name) === alias)) {
-      throw new BadRequestException('Another custom tier already uses this model alias');
-    }
   }
 
-  private assertRuleAvailable(
-    existing: HeaderTier[],
-    key: string | null,
-    value: string | null,
-  ): void {
-    if (!key || !value) return;
+  private assertRuleAvailable(existing: HeaderTier[], key: string, value: string): void {
     if (existing.some((t) => t.header_key === key && t.header_value === value)) {
       throw new BadRequestException(
         'Another tier already matches this header key and value combination',

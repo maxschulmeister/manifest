@@ -6,8 +6,8 @@ export interface HeaderTier {
   id: string;
   agent_id: string;
   name: string;
-  header_key: string | null;
-  header_value: string | null;
+  header_key: string;
+  header_value: string;
   badge_color: TierColor;
   sort_order: number;
   enabled: boolean;
@@ -28,8 +28,8 @@ export interface SeenHeader {
 
 export interface CreateHeaderTierInput {
   name: string;
-  header_key?: string | null;
-  header_value?: string | null;
+  header_key: string;
+  header_value: string;
   badge_color: TierColor;
 }
 

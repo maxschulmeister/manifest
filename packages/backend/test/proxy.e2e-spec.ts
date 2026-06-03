@@ -74,7 +74,7 @@ describe('Proxy E2E — /v1/chat/completions', () => {
   it('rejects unauthenticated requests with HTTP 401', async () => {
     const res = await api()
       .post('/v1/chat/completions')
-      .send({ model: 'auto', messages: [{ role: 'user', content: 'hello' }] })
+      .send({ messages: [{ role: 'user', content: 'hello' }] })
       .expect(401);
 
     expect(res.body.error.type).toBe('auth_error');
@@ -95,7 +95,7 @@ describe('Proxy E2E — /v1/chat/completions', () => {
     const res = await api()
       .post('/v1/chat/completions')
       .set('Accept', 'text/event-stream')
-      .send({ model: 'auto', messages: [{ role: 'user', content: 'hello' }] })
+      .send({ messages: [{ role: 'user', content: 'hello' }] })
       .expect(200);
 
     expect(res.body.choices[0].message.content).toContain('Missing the Authorization header');
@@ -121,7 +121,7 @@ describe('Proxy E2E — /v1/chat/completions', () => {
 
   it('returns HTTP 400 when messages array is empty', async () => {
     const res = await bearer(api().post('/v1/chat/completions'))
-      .send({ model: 'auto', messages: [] })
+      .send({ messages: [] })
       .expect(400);
 
     expect(res.body.error.message).toContain('messages');
@@ -129,7 +129,7 @@ describe('Proxy E2E — /v1/chat/completions', () => {
 
   it('returns the friendly envelope for missing messages when stream=true', async () => {
     const res = await bearer(api().post('/v1/chat/completions'))
-      .send({ model: 'auto', stream: true })
+      .send({ stream: true })
       .expect(200);
 
     // SSE payload — assert via raw text since supertest stores it on `text`.
@@ -142,7 +142,6 @@ describe('Proxy E2E — /v1/chat/completions', () => {
     // proving the proxy successfully routed and forwarded the request.
     const res = await bearer(api().post('/v1/chat/completions'))
       .send({
-        model: 'auto',
         messages: [{ role: 'user', content: 'hi' }],
         stream: false,
       });
@@ -166,7 +165,6 @@ describe('Proxy E2E — /v1/chat/completions', () => {
   it('includes X-Manifest-* headers when forwarding', async () => {
     const res = await bearer(api().post('/v1/chat/completions'))
       .send({
-        model: 'auto',
         messages: [{ role: 'user', content: 'hello' }],
         stream: false,
       });
@@ -184,7 +182,6 @@ describe('Proxy E2E — /v1/chat/completions', () => {
     const res = await bearer(api().post('/v1/chat/completions'))
       .set('X-Session-Key', 'test-session-123')
       .send({
-        model: 'auto',
         messages: [{ role: 'user', content: 'hello' }],
         stream: false,
       });

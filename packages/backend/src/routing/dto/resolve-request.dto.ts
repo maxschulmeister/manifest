@@ -20,9 +20,10 @@ class MessageDto {
 }
 
 export class ResolveRequestDto {
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
-  model!: string;
+  model?: string;
 
   @IsArray()
   @ValidateNested({ each: true })

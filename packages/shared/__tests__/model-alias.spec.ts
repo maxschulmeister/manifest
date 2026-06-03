@@ -1,6 +1,7 @@
 import {
   aliasToSpecificityCategory,
   classifyModelAlias,
+  getStaticModelAliases,
   getValidAliases,
   specificityCategoryToAlias,
 } from '../src/model-alias';
@@ -8,7 +9,7 @@ import { SPECIFICITY_CATEGORIES } from '../src/specificity';
 import { TIER_SLOTS } from '../src/tiers';
 
 describe('specificityCategoryToAlias', () => {
-  it('converts underscores to hyphens', () => {
+  it('converts underscores to hyphens for API-facing model ids', () => {
     expect(specificityCategoryToAlias('web_browsing')).toBe('web-browsing');
     expect(specificityCategoryToAlias('data_analysis')).toBe('data-analysis');
   });
@@ -28,7 +29,7 @@ describe('aliasToSpecificityCategory', () => {
   });
 
   it('returns null for unknown aliases', () => {
-    expect(aliasToSpecificityCategory('web-browse')).toBeNull();
+    expect(aliasToSpecificityCategory('web-search')).toBeNull();
   });
 });
 
@@ -70,11 +71,8 @@ describe('classifyModelAlias', () => {
     expect(classifyModelAlias('banana')).toBeNull();
   });
 
-  it('returns null for empty string', () => {
+  it('returns null for empty string, null, and undefined', () => {
     expect(classifyModelAlias('')).toBeNull();
-  });
-
-  it('returns null for null and undefined', () => {
     expect(classifyModelAlias(null)).toBeNull();
     expect(classifyModelAlias(undefined)).toBeNull();
   });
@@ -86,12 +84,14 @@ describe('classifyModelAlias', () => {
   });
 });
 
-describe('getValidAliases', () => {
+describe('getStaticModelAliases', () => {
   it('returns auto, tier slots, and kebab-case specificity aliases', () => {
-    expect(getValidAliases()).toEqual([
+    const expected = [
       'auto',
       ...TIER_SLOTS,
       ...SPECIFICITY_CATEGORIES.map(specificityCategoryToAlias),
-    ]);
+    ];
+    expect(getStaticModelAliases()).toEqual(expected);
+    expect(getValidAliases()).toEqual(expected);
   });
 });

@@ -37,6 +37,13 @@ describe("FrameworkSnippets", () => {
     expect(container.textContent).toContain("auto");
   });
 
+  it("renders a custom model id in the details and snippet", () => {
+    const { container } = render(() => <FrameworkSnippets {...defaultProps} modelId="ht-fast" />);
+    expect(container.textContent).toContain("Model");
+    expect(container.textContent).toContain("ht-fast");
+    expect(container.textContent).toContain('model="ht-fast"');
+  });
+
   it("renders connection details with key prefix when provided", () => {
     const { container } = render(() => (
       <FrameworkSnippets {...defaultProps} keyPrefix="mnfst_abc" />
