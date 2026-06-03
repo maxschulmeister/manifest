@@ -281,6 +281,7 @@ vi.mock('../../src/pages/RoutingDefaultTierSection.js', () => ({
       props.getModelParams,
       props.setModelParams,
       props.headerTiers,
+      props.headerTierOptions,
     ];
     void _read;
     return (
@@ -495,12 +496,7 @@ vi.mock('../../src/pages/RoutingHeaderTiersSection.js', () => ({
 vi.mock('../../src/components/ResponseModeModal.js', () => ({
   default: (props: Record<string, unknown>) => {
     // Read every prop so JSX attribute lines 711-723 are covered.
-    const _read = [
-      props.responseMode,
-      props.disabled,
-      props.tiers,
-      props.models,
-    ];
+    const _read = [props.responseMode, props.disabled, props.tiers, props.models];
     void _read;
     return (
       <div data-testid="response-mode-modal">
@@ -1469,7 +1465,11 @@ describe('Routing page', () => {
       const headerRight = screen.getByTestId('tab-header-right');
       expect(headerRight.querySelector('.response-mode-btn')).not.toBeNull();
     });
-    fireEvent.click(screen.getByTestId('tab-header-right').querySelector('.response-mode-btn') as HTMLButtonElement);
+    fireEvent.click(
+      screen
+        .getByTestId('tab-header-right')
+        .querySelector('.response-mode-btn') as HTMLButtonElement,
+    );
     await waitFor(() => {
       expect(screen.getByTestId('response-mode-modal')).toBeDefined();
     });
@@ -1481,7 +1481,11 @@ describe('Routing page', () => {
       const headerRight = screen.getByTestId('tab-header-right');
       expect(headerRight.querySelector('.response-mode-btn')).not.toBeNull();
     });
-    fireEvent.click(screen.getByTestId('tab-header-right').querySelector('.response-mode-btn') as HTMLButtonElement);
+    fireEvent.click(
+      screen
+        .getByTestId('tab-header-right')
+        .querySelector('.response-mode-btn') as HTMLButtonElement,
+    );
     await waitFor(() => {
       expect(screen.getByTestId('response-mode-modal')).toBeDefined();
     });
@@ -1497,7 +1501,11 @@ describe('Routing page', () => {
       const headerRight = screen.getByTestId('tab-header-right');
       expect(headerRight.querySelector('.response-mode-btn')).not.toBeNull();
     });
-    fireEvent.click(screen.getByTestId('tab-header-right').querySelector('.response-mode-btn') as HTMLButtonElement);
+    fireEvent.click(
+      screen
+        .getByTestId('tab-header-right')
+        .querySelector('.response-mode-btn') as HTMLButtonElement,
+    );
     await waitFor(() => {
       expect(screen.getByTestId('response-mode-modal')).toBeDefined();
     });
@@ -1547,7 +1555,11 @@ describe('Routing page', () => {
       const headerRight = screen.getByTestId('tab-header-right');
       expect(headerRight.querySelector('.response-mode-btn')).not.toBeNull();
     });
-    fireEvent.click(screen.getByTestId('tab-header-right').querySelector('.response-mode-btn') as HTMLButtonElement);
+    fireEvent.click(
+      screen
+        .getByTestId('tab-header-right')
+        .querySelector('.response-mode-btn') as HTMLButtonElement,
+    );
     await waitFor(() => {
       expect(screen.getByTestId('response-mode-modal')).toBeDefined();
     });

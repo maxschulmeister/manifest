@@ -522,10 +522,10 @@ const FallbackList: Component<FallbackListProps> = (props) => {
                         })()}
                       </Show>
                       <span class="fallback-list__model">{fallbackLabel(model(), i())}</span>
-                      <Show when={skippedInStream(model(), i())}>
+                      <Show when={!isHeaderTier() && skippedInStream(model(), i())}>
                         <span class="routing-card__skipped-badge">Skipped in Stream</span>
                       </Show>
-                      <Show when={keys().length > 1}>
+                      <Show when={!isHeaderTier() && keys().length > 1}>
                         <RouteKeyChip
                           keys={keys()}
                           currentLabel={pinnedLabel() ?? undefined}

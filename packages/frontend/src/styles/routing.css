@@ -1623,7 +1623,6 @@
 }
 
 .fallback-list__card--header-tier {
-  border-color: hsl(var(--primary) / 0.45);
   background: hsl(var(--primary) / 0.08);
   color: hsl(var(--primary));
 }
