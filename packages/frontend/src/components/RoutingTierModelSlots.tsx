@@ -24,6 +24,7 @@ export interface RoutingTierModelSlotsProps {
   models: AvailableModel[];
   customProviders: CustomProviderData[];
   connectedProviders: RoutingProvider[];
+  headerTierOptions?: { id: string; name: string }[];
   primaryModel: Accessor<string | null>;
   primaryRoute: Accessor<ModelRoute | null>;
   fallbacks: Accessor<string[]>;
@@ -204,6 +205,7 @@ const RoutingTierModelSlots: Component<RoutingTierModelSlotsProps> = (props) => 
             models={props.models}
             customProviders={props.customProviders}
             connectedProviders={props.connectedProviders}
+            headerTierOptions={props.headerTierOptions}
             onUpdate={(updatedFallbacks, updatedRoutes) =>
               props.onFallbackUpdate(updatedFallbacks, updatedRoutes)
             }

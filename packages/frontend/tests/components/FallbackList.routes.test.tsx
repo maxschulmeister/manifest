@@ -119,6 +119,36 @@ describe("FallbackList route-aware behaviors", () => {
     expect(container.querySelector('[data-testid="auth-subscription"]')).toBeNull();
   });
 
+  it("renders header-tier fallback refs by tier name instead of internal id", () => {
+    const { container } = render(() => (
+      <FallbackList
+        {...baseProps}
+        fallbacks={["ht_123"]}
+        fallbackRoutes={[{ kind: "header_tier", id: "ht_123" }]}
+        headerTierOptions={[{ id: "ht_123", name: "Fast lane" }]}
+        onUpdate={vi.fn()}
+      />
+    ));
+
+    const label = container.querySelector(".fallback-list__model")?.textContent;
+    expect(label).toBe("Fast lane");
+    expect(label).not.toBe("ht_123");
+  });
+
+  it("renders optimistic header-tier fallback ids by tier name before routes refresh", () => {
+    const { container } = render(() => (
+      <FallbackList
+        {...baseProps}
+        fallbacks={["ht_123"]}
+        fallbackRoutes={[]}
+        headerTierOptions={[{ id: "ht_123", name: "Fast lane" }]}
+        onUpdate={vi.fn()}
+      />
+    ));
+
+    expect(container.querySelector(".fallback-list__model")?.textContent).toBe("Fast lane");
+  });
+
   it("reorders fallbacks AND fallbackRoutes in lockstep on drop", async () => {
     const onUpdate = vi.fn();
     const persist = vi.fn().mockResolvedValue(undefined);

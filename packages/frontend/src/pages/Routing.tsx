@@ -556,6 +556,11 @@ const Routing: Component = () => {
                   customProviders={() => customProviders() ?? []}
                   activeProviders={activeProviders}
                   connectedProviders={() => connectedProviders() ?? []}
+                  headerTierOptions={() =>
+                    (headerTiers() ?? [])
+                      .filter((tier) => tier.enabled)
+                      .map((tier) => ({ id: tier.id, name: tier.name }))
+                  }
                   tiersLoading={tiers.loading}
                   changingTier={actions.changingTier}
                   resettingTier={actions.resettingTier}
@@ -589,6 +594,11 @@ const Routing: Component = () => {
                   customProviders={() => customProviders() ?? []}
                   activeProviders={activeProviders}
                   connectedProviders={() => connectedProviders() ?? []}
+                  headerTierOptions={() =>
+                    (headerTiers() ?? [])
+                      .filter((tier) => tier.enabled)
+                      .map((tier) => ({ id: tier.id, name: tier.name }))
+                  }
                   changingTier={changingSpecificity}
                   resettingTier={resettingSpecificity}
                   resettingAll={() => false}

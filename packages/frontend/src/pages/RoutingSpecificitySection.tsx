@@ -144,6 +144,7 @@ export interface RoutingSpecificitySectionProps {
   customProviders: () => CustomProviderData[];
   activeProviders: () => RoutingProvider[];
   connectedProviders: () => RoutingProvider[];
+  headerTierOptions?: () => { id: string; name: string }[];
   changingTier: () => string | null;
   resettingTier: () => string | null;
   resettingAll: () => boolean;
@@ -284,9 +285,12 @@ const RoutingSpecificitySection: Component<RoutingSpecificitySectionProps> = (pr
                 onFallbackUpdate={props.onFallbackUpdate}
                 onAddFallback={props.onAddFallback}
                 getFallbacksFor={(cat) =>
-                  getAssignment(cat)?.fallback_routes?.map((r) => r.model) ?? []
+                  getAssignment(cat)?.fallback_routes?.map((r) =>
+                    'kind' in r && r.kind === 'header_tier' ? r.id : r.model,
+                  ) ?? []
                 }
                 connectedProviders={props.connectedProviders}
+                headerTierOptions={props.headerTierOptions}
                 persistFallbacks={(_agentName, category, models, routes) =>
                   setSpecificityFallbacks(_agentName, category, models, routes)
                 }

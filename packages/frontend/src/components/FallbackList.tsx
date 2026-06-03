@@ -28,6 +28,11 @@ import ModelParamsAffordance from './ModelParamsAffordance.jsx';
 import RouteKeyChip from './RouteKeyChip.js';
 import { modelParamsScopeForTier } from 'manifest-shared';
 
+interface HeaderTierOption {
+  id: string;
+  name: string;
+}
+
 interface FallbackListProps {
   agentName: string;
   tier: string;
@@ -43,6 +48,7 @@ interface FallbackListProps {
   models: AvailableModel[];
   customProviders: CustomProviderData[];
   connectedProviders: RoutingProvider[];
+  headerTierOptions?: HeaderTierOption[];
   // FallbackList always passes both arguments. The second is optional in the
   // signature so parents whose optimistic-state model doesn't track
   // fallback_routes separately can omit it and still type-check; the next
@@ -117,6 +123,18 @@ const FallbackList: Component<FallbackListProps> = (props) => {
     return stripCustomPrefix(model);
   };
   const modelParamsScope = () => props.modelParamsScope ?? modelParamsScopeForTier(props.tier);
+
+  const headerTierLabel = (id: string): string | undefined =>
+    props.headerTierOptions?.find((tier) => tier.id === id)?.name ??
+    props.headerTiers?.find((tier) => tier.id === id)?.name;
+
+  const fallbackLabel = (model: string, index: number): string => {
+    const route = props.fallbackRoutes?.[index];
+    if (route && 'kind' in route && route.kind === 'header_tier') {
+      return headerTierLabel(route.id) ?? route.id;
+    }
+    return headerTierLabel(model) ?? modelLabel(model);
+  };
 
   const modelInfoFor = (model: string, index: number): AvailableModel | undefined => {
     const route = props.fallbackRoutes?.[index];
@@ -392,10 +410,6 @@ const FallbackList: Component<FallbackListProps> = (props) => {
               const auth = () => authTypeFor(provId(), i());
               const title = () => providerTitle(provId(), auth());
               const keys = () => keysForFallback(provId(), auth());
-              const displayLabel = () => {
-                if (!isHeaderTier()) return modelLabel(model());
-                return resolvedHeaderTier()?.name ?? modelLabel(model());
-              };
               return (
                 <>
                   <div
@@ -508,7 +522,7 @@ const FallbackList: Component<FallbackListProps> = (props) => {
                           );
                         })()}
                       </Show>
-                      <span class="fallback-list__model">{displayLabel()}</span>
+                      <span class="fallback-list__model">{fallbackLabel(model(), i())}</span>
                       <Show when={skippedInStream(model(), i())}>
                         <span class="routing-card__skipped-badge">Skipped in Stream</span>
                       </Show>
@@ -516,7 +530,7 @@ const FallbackList: Component<FallbackListProps> = (props) => {
                         <RouteKeyChip
                           keys={keys()}
                           currentLabel={pinnedLabel() ?? undefined}
-                          modelLabel={modelLabel(model())}
+                          modelLabel={fallbackLabel(model(), i())}
                           usedLabels={() =>
                             usedKeyLabelsForModelInTier(
                               (props.tierData ?? (() => undefined))(),
@@ -543,7 +557,7 @@ const FallbackList: Component<FallbackListProps> = (props) => {
                           provider={provId()}
                           authType={(auth() as AuthType) ?? undefined}
                           model={model()}
-                          slotLabel={modelLabel(model())}
+                          slotLabel={fallbackLabel(model(), i())}
                           scope={modelParamsScope()}
                           agentName={props.agentName}
                           getParams={props.getModelParams!}

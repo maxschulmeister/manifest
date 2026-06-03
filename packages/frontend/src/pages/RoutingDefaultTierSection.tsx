@@ -19,6 +19,7 @@ export interface RoutingDefaultTierSectionProps {
   customProviders: () => CustomProviderData[];
   activeProviders: () => RoutingProvider[];
   connectedProviders: () => RoutingProvider[];
+  headerTierOptions?: () => { id: string; name: string }[];
   tiersLoading: boolean;
   changingTier: () => string | null;
   resettingTier: () => string | null;
@@ -100,6 +101,7 @@ const RoutingDefaultTierSection: Component<RoutingDefaultTierSectionProps> = (pr
         onAddFallback={props.onAddFallback}
         getFallbacksFor={props.getFallbacksFor}
         connectedProviders={props.connectedProviders}
+        headerTierOptions={props.headerTierOptions}
         getModelParams={props.getModelParams}
         setModelParams={props.setModelParams}
         headerTiers={props.headerTiers}
@@ -131,6 +133,7 @@ const RoutingDefaultTierSection: Component<RoutingDefaultTierSectionProps> = (pr
             onAddFallback={props.onAddFallback}
             getFallbacksFor={props.getFallbacksFor}
             connectedProviders={props.connectedProviders}
+            headerTierOptions={props.headerTierOptions}
             getModelParams={props.getModelParams}
             setModelParams={props.setModelParams}
             headerTiers={props.headerTiers}
