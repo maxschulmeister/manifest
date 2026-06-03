@@ -197,8 +197,6 @@
 }
 
 .routing-modal__tier-arrow {
-  display: inline-flex;
-  align-items: center;
   color: hsl(var(--muted-foreground));
 }
 
