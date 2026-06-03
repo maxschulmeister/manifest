@@ -496,7 +496,10 @@ const Routing: Component = () => {
         </Show>
       </div>
 
-      <Show when={!connectedProviders.loading} fallback={<RoutingLoadingSkeleton />}>
+      <Show
+        when={!connectedProviders.loading && !headerTiers.loading}
+        fallback={<RoutingLoadingSkeleton />}
+      >
         <Show
           when={hasProviders()}
           fallback={

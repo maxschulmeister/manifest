@@ -146,6 +146,7 @@ vi.mock('../../src/components/RoutingModals.js', () => ({
       props.specificityAssignments,
       props.customProviders,
       props.connectedProviders,
+      props.headerTiers,
     ];
     void _read;
     return (
@@ -279,6 +280,7 @@ vi.mock('../../src/pages/RoutingDefaultTierSection.js', () => ({
       props.onResponseModeChange,
       props.getModelParams,
       props.setModelParams,
+      props.headerTierOptions,
     ];
     void _read;
     return (
@@ -1239,6 +1241,9 @@ describe('Routing page', () => {
     render(() => <Routing />);
     await waitFor(() => {
       expect(screen.getByTestId('modal-trigger-override')).toBeDefined();
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId('loading-skeleton')).toBeNull();
     });
     // Open dropdown first via the default-section open button.
     fireEvent.click(screen.getByTestId('open-dropdown'));

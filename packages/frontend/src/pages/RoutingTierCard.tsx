@@ -91,6 +91,8 @@ export interface RoutingTierCardProps {
     model: string,
     params: RequestParamDefaults | null,
   ) => Promise<unknown>;
+  /** Header tiers for resolving header_tier fallback refs. */
+  headerTierOptions?: () => { id: string; name: string }[];
 }
 
 const effectiveRoute = (
@@ -254,6 +256,7 @@ const RoutingTierCard: Component<RoutingTierCardProps> = (props) => {
           setModelParams={props.setModelParams}
           tierData={props.tier}
           showSwappingSkeleton={() => props.changingTier() === props.stage.id}
+          headerTierOptions={props.headerTierOptions?.()}
           renderPrimaryExtension={() => (
             <Show when={!isManual()}>
               <span class="routing-card__auto-tag">auto</span>

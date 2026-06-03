@@ -11,6 +11,7 @@ import {
   type ResponseMode,
   type RoutingProvider,
 } from '../services/api.js';
+import type { HeaderTier } from '../services/api/header-tiers.js';
 import { customProviderColor } from '../services/formatters.js';
 import { getModelLabel } from '../services/provider-utils.js';
 import { PROVIDERS } from '../services/providers.js';
@@ -390,6 +391,7 @@ const FallbackList: Component<FallbackListProps> = (props) => {
               const model = () => entry;
               const route = () => props.fallbackRoutes?.[i()];
               const isHeaderTier = () => !!headerTierForRow(model(), i());
+              const resolvedHeaderTier = () => headerTierForRow(model(), i());
               const pinnedLabel = () => {
                 const r = route();
                 return r && !('kind' in r) ? (r.keyLabel ?? null) : null;
@@ -399,6 +401,10 @@ const FallbackList: Component<FallbackListProps> = (props) => {
               const auth = () => authTypeFor(provId(), i());
               const title = () => providerTitle(provId(), auth());
               const keys = () => keysForFallback(provId(), auth());
+              const displayLabel = () => {
+                if (!isHeaderTier()) return modelLabel(model());
+                return resolvedHeaderTier()?.name ?? modelLabel(model());
+              };
               return (
                 <>
                   <div
@@ -412,13 +418,16 @@ const FallbackList: Component<FallbackListProps> = (props) => {
                     classList={{
                       'fallback-list__card--dragging': dragIndex() === i(),
                       'fallback-list__card--swapping': props.swappingIndex === i(),
-                      'fallback-list__card--skipped': skippedInStream(model(), i()),
+                      'fallback-list__card--skipped':
+                        !isHeaderTier() && skippedInStream(model(), i()),
                       'fallback-list__card--header-tier': isHeaderTier(),
                     }}
                     title={
-                      skippedInStream(model(), i())
-                        ? 'Skipped while Stream mode is active'
-                        : undefined
+                      isHeaderTier()
+                        ? (resolvedHeaderTier()?.name ?? 'Custom tier')
+                        : skippedInStream(model(), i())
+                          ? 'Skipped while Stream mode is active'
+                          : undefined
                     }
                     draggable={true}
                     onDragStart={(e) => handleDragStart(i(), e)}
@@ -446,13 +455,33 @@ const FallbackList: Component<FallbackListProps> = (props) => {
                         </>
                       }
                     >
-                      <Show when={provId() && !isCustom()}>
+                      <Show when={isHeaderTier()}>
+                        <span class="fallback-list__icon" title="Custom tier">
+                          <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            aria-hidden="true"
+                            style="color: #8b5cf6"
+                          >
+                            <path d="M4 6h16" />
+                            <path d="M4 12h16" />
+                            <path d="M4 18h16" />
+                          </svg>
+                        </span>
+                      </Show>
+                      <Show when={!isHeaderTier() && provId() && !isCustom()}>
                         <span class="fallback-list__icon" title={title()}>
                           {providerIcon(provId()!, 14)}
                           {authBadgeFor(auth(), 8)}
                         </span>
                       </Show>
-                      <Show when={isCustom()}>
+                      <Show when={!isHeaderTier() && isCustom()}>
                         {(() => {
                           const cp = props.customProviders.find(
                             (c) => `custom:${c.id}` === provId(),
@@ -489,10 +518,10 @@ const FallbackList: Component<FallbackListProps> = (props) => {
                         })()}
                       </Show>
                       <span class="fallback-list__model">{fallbackLabel(model(), i())}</span>
-                      <Show when={skippedInStream(model(), i())}>
+                      <Show when={!isHeaderTier() && skippedInStream(model(), i())}>
                         <span class="routing-card__skipped-badge">Skipped in Stream</span>
                       </Show>
-                      <Show when={keys().length > 1}>
+                      <Show when={!isHeaderTier() && keys().length > 1}>
                         <RouteKeyChip
                           keys={keys()}
                           currentLabel={pinnedLabel() ?? undefined}
