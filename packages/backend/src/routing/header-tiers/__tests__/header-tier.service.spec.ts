@@ -135,10 +135,15 @@ describe('HeaderTierService', () => {
       ).rejects.toThrow(/lowercase letters/);
     });
 
-    it('rejects empty header keys', async () => {
-      await expect(
-        svc.create('agent-1', 'user-1', null, validInput({ header_key: '' })),
-      ).rejects.toThrow(/Header key is required/);
+    it('allows creating a custom tier without a header rule', async () => {
+      const result = await svc.create(
+        'agent-1',
+        'user-1',
+        null,
+        validInput({ header_key: '', header_value: '' }),
+      );
+      expect(result.header_key).toBeNull();
+      expect(result.header_value).toBeNull();
     });
 
     it('rejects reserved header keys', async () => {
@@ -148,10 +153,18 @@ describe('HeaderTierService', () => {
       ).rejects.toThrow(/stripped for security/);
     });
 
-    it('rejects empty header values', async () => {
+    it('rejects partial header rules', async () => {
       await expect(
-        svc.create('agent-1', 'user-1', null, validInput({ header_value: '' })),
-      ).rejects.toThrow(/Header value is required/);
+        svc.create(
+          'agent-1',
+          'user-1',
+          null,
+          validInput({ header_key: 'x-tier', header_value: '' }),
+        ),
+      ).rejects.toThrow(/Both header key and header value are required/);
+      await expect(
+        svc.create('agent-1', 'user-1', null, validInput({ header_key: '', header_value: 'gold' })),
+      ).rejects.toThrow(/Both header key and header value are required/);
     });
 
     it('rejects oversized header values', async () => {
@@ -164,6 +177,33 @@ describe('HeaderTierService', () => {
       await expect(
         svc.create('agent-1', 'user-1', null, validInput({ badge_color: 'rainbow' as TierColor })),
       ).rejects.toThrow(/badge color/);
+    });
+
+    it('rejects names that collide with built-in model aliases', async () => {
+      await expect(
+        svc.create('agent-1', 'user-1', null, validInput({ name: 'Simple' })),
+      ).rejects.toThrow(/model alias is reserved/);
+    });
+
+    it('rejects names that derive to the same model alias', async () => {
+      repo.find.mockResolvedValue([
+        {
+          id: 'h1',
+          name: 'Premium Fast',
+          header_key: null,
+          header_value: null,
+          sort_order: 0,
+        } as HeaderTier,
+      ]);
+      await expect(
+        svc.create('agent-1', 'user-1', null, validInput({ name: 'Premium/Fast' })),
+      ).rejects.toThrow(/model alias already exists/);
+    });
+
+    it('rejects names without model-alias characters', async () => {
+      await expect(
+        svc.create('agent-1', 'user-1', null, validInput({ name: '---' })),
+      ).rejects.toThrow(/letter or number/);
     });
 
     it('rejects duplicate names case-insensitively', async () => {

@@ -118,9 +118,10 @@ const HeaderTierModal: Component<Props> = (props) => {
     return undefined;
   };
 
-  const validateKey = (raw: string): string | undefined => {
+  const validateKey = (raw: string, rawValue = headerValue()): string | undefined => {
     const key = raw.trim().toLowerCase();
-    if (!key) return 'Header key is required';
+    if (!key)
+      return rawValue.trim() ? 'Header key is required when header value is set' : undefined;
     if (!HEADER_KEY_RE.test(key)) {
       return 'Header keys can only contain lowercase letters, digits, and hyphens';
     }
@@ -132,7 +133,7 @@ const HeaderTierModal: Component<Props> = (props) => {
 
   const validateValue = (rawValue: string, rawKey: string): string | undefined => {
     const v = rawValue.trim();
-    if (!v) return 'Header value is required';
+    if (!v) return rawKey.trim() ? 'Header value is required when header key is set' : undefined;
     if (v.length > MAX_HEADER_VALUE_LEN) {
       return `Header value must be ${MAX_HEADER_VALUE_LEN} characters or fewer`;
     }
@@ -164,10 +165,12 @@ const HeaderTierModal: Component<Props> = (props) => {
     if (!isValid() || submitting()) return;
     setSubmitting(true);
     try {
+      const trimmedKey = headerKey().trim().toLowerCase();
+      const trimmedValue = headerValue().trim();
       const payload = {
         name: name().trim(),
-        header_key: headerKey().trim().toLowerCase(),
-        header_value: headerValue().trim(),
+        header_key: trimmedKey || null,
+        header_value: trimmedValue || null,
         badge_color: badgeColor(),
       };
       let saved = editingTier
@@ -297,7 +300,6 @@ const HeaderTierModal: Component<Props> = (props) => {
           placeholder="custom-value"
           invalid={valueError() !== undefined}
           errorMessage={valueError()}
-          disabled={!headerKey().trim()}
           freeFormHint={`Use "${headerValue().trim()}" as a custom value`}
         />
 

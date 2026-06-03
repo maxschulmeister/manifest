@@ -30,12 +30,21 @@ export function getStaticModelAliases(): readonly string[] {
   return ['auto', ...TIER_SLOTS, ...SPECIFICITY_CATEGORIES.map(specificityCategoryToAlias)];
 }
 
+/** API-facing model id for a custom tier name. */
+export function customTierNameToModelAlias(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
 /** Backwards-compatible name for callers that want the static routing aliases. */
 export const getValidAliases = getStaticModelAliases;
 
 /**
- * Classify static request model ids. Custom tier ids are agent-specific and are
- * resolved by the backend against header_tiers.id.
+ * Classify static request model ids. Custom tier slugs are agent-specific and are
+ * resolved by the backend against header_tiers.name.
  */
 export function classifyModelAlias(
   input: string | null | undefined,

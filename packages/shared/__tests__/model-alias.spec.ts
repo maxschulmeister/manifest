@@ -1,6 +1,7 @@
 import {
   aliasToSpecificityCategory,
   classifyModelAlias,
+  customTierNameToModelAlias,
   getStaticModelAliases,
   getValidAliases,
   specificityCategoryToAlias,
@@ -81,6 +82,17 @@ describe('classifyModelAlias', () => {
     expect(classifyModelAlias('Simple')).toBeNull();
     expect(classifyModelAlias('Web-Browsing')).toBeNull();
     expect(classifyModelAlias('AUTO')).toBeNull();
+  });
+});
+
+describe('customTierNameToModelAlias', () => {
+  it('derives a lowercase kebab-case model alias from the tier name', () => {
+    expect(customTierNameToModelAlias('Premium Fast')).toBe('premium-fast');
+    expect(customTierNameToModelAlias('Data/API Tier')).toBe('data-api-tier');
+  });
+
+  it('trims repeated separators', () => {
+    expect(customTierNameToModelAlias('  Premium---Fast!!  ')).toBe('premium-fast');
   });
 });
 

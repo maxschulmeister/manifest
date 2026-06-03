@@ -28,7 +28,7 @@ import KeyPickerModal from './KeyPickerModal.js';
 import RoutingTierModelSlots from './RoutingTierModelSlots.js';
 import RouteKeyChip from './RouteKeyChip.js';
 import { toast } from '../services/toast-store.js';
-import { modelParamsScopeForHeaderTier } from 'manifest-shared';
+import { customTierNameToModelAlias, modelParamsScopeForHeaderTier } from 'manifest-shared';
 
 function providerDisplayName(providerId: string, customProviders: CustomProviderData[]): string {
   if (providerId.startsWith('custom:')) {
@@ -91,6 +91,7 @@ const HeaderTierCard: Component<Props> = (props) => {
   const currentModel = (): string | null => props.tier.override_route?.model ?? null;
   const fallbacks = (): string[] => props.tier.fallback_routes?.map((r) => r.model) ?? [];
   const primaryRoute = () => props.tier.override_route ?? null;
+  const modelAlias = () => customTierNameToModelAlias(props.tier.name);
 
   const providerId = (): string | undefined => {
     const m = currentModel();
@@ -271,7 +272,7 @@ const HeaderTierCard: Component<Props> = (props) => {
                       setSnippetOpen(true);
                     }}
                   >
-                    Use model ID
+                    Use model slug
                   </button>
                   <Show when={props.onEdit}>
                     <button
@@ -356,14 +357,16 @@ const HeaderTierCard: Component<Props> = (props) => {
       </div>
 
       <div class="header-tier-card__rules">
-        <code
-          class="header-tier-card__rule"
-          title={`${props.tier.header_key}: ${props.tier.header_value}`}
-        >
-          {props.tier.header_key}: {props.tier.header_value}
-        </code>
-        <code class="header-tier-card__rule" title={`model: ${props.tier.id}`}>
-          model: "{props.tier.id}"
+        <Show when={props.tier.header_key && props.tier.header_value}>
+          <code
+            class="header-tier-card__rule"
+            title={`${props.tier.header_key}: ${props.tier.header_value}`}
+          >
+            {props.tier.header_key}: {props.tier.header_value}
+          </code>
+        </Show>
+        <code class="header-tier-card__rule" title={`model: ${modelAlias()}`}>
+          model: "{modelAlias()}"
         </code>
       </div>
 

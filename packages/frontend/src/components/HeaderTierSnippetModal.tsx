@@ -1,4 +1,5 @@
 import { type Component, createResource } from 'solid-js';
+import { customTierNameToModelAlias } from 'manifest-shared';
 import FrameworkSnippets from './FrameworkSnippets.jsx';
 import { getAgentKey } from '../services/api.js';
 import type { HeaderTier } from '../services/api/header-tiers.js';
@@ -25,7 +26,7 @@ const HeaderTierSnippetModal: Component<Props> = (props) => {
     return `${window.location.origin}/v1`;
   };
 
-  const modelText = (): string => props.tier.id;
+  const modelText = (): string => customTierNameToModelAlias(props.tier.name);
   const targetModelText = (): string =>
     props.tier.override_route?.model ?? 'no model assigned (falls back to default routing)';
 
@@ -51,7 +52,7 @@ const HeaderTierSnippetModal: Component<Props> = (props) => {
             id="header-tier-snippet-title"
             style="margin: 0; font-size: var(--font-size-lg); font-weight: 600;"
           >
-            Use the “{props.tier.name}” model ID
+            Use the “{props.tier.name}” model slug
           </h2>
           <button class="modal__close" onClick={() => props.onClose()} aria-label="Close">
             <svg

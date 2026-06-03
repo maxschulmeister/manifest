@@ -22,7 +22,7 @@ describe('parseModelAliasFromBody', () => {
     ).resolves.toEqual({ kind: 'tier', tier: 'simple' });
   });
 
-  it('passes through custom tier ids from the classifier', async () => {
+  it('passes through custom tiers from the classifier', async () => {
     routingAliasService.classifyModel.mockResolvedValue({ kind: 'header_tier', id: 'ht-fast' });
 
     await expect(

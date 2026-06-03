@@ -308,7 +308,12 @@ const RoutingHeaderTiersSection: Component<Props> = (props) => {
                       <div class="specificity-modal__info">
                         <span class="specificity-modal__name">{tier.name}</span>
                         <span class="specificity-modal__stage-desc">
-                          {tier.header_key}: {tier.header_value}
+                          <Show
+                            when={tier.header_key && tier.header_value}
+                            fallback="Model selector only"
+                          >
+                            {tier.header_key}: {tier.header_value}
+                          </Show>
                         </span>
                       </div>
                       <span

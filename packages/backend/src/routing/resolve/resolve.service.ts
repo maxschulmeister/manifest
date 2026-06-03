@@ -504,6 +504,7 @@ export class ResolveService {
 }
 
 function matchesHeaderRule(headers: IncomingHttpHeaders, tier: HeaderTier): boolean {
+  if (!tier.header_key || !tier.header_value) return false;
   const raw = headers[tier.header_key];
   if (raw == null) return false;
   // Node gives repeated headers as string[]; match if any entry equals the rule.

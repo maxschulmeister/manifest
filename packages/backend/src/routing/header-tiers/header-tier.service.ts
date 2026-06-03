@@ -7,6 +7,8 @@ import {
   DEFAULT_RESPONSE_MODE,
   DEFAULT_OUTPUT_MODALITY,
   TIER_COLORS,
+  customTierNameToModelAlias,
+  getStaticModelAliases,
   type TierColor,
 } from 'manifest-shared';
 import { HeaderTier } from '../../entities/header-tier.entity';
@@ -29,15 +31,15 @@ const MAX_HEADER_VALUE_LEN = 128;
 
 export interface CreateHeaderTierInput {
   name: string;
-  header_key: string;
-  header_value: string;
+  header_key?: string | null;
+  header_value?: string | null;
   badge_color: TierColor;
 }
 
 export interface UpdateHeaderTierInput {
   name?: string;
-  header_key?: string;
-  header_value?: string;
+  header_key?: string | null;
+  header_value?: string | null;
   badge_color?: TierColor;
 }
 
@@ -68,8 +70,10 @@ export class HeaderTierService {
     input: CreateHeaderTierInput,
   ): Promise<HeaderTier> {
     const name = this.validateName(input.name);
-    const headerKey = this.validateHeaderKey(input.header_key);
-    const headerValue = this.validateHeaderValue(input.header_value);
+    const { headerKey, headerValue } = this.validateHeaderRule(
+      input.header_key,
+      input.header_value,
+    );
     const badgeColor = this.validateColor(input.badge_color);
 
     const existing = await this.repo.find({ where: { agent_id: agentId } });
@@ -118,6 +122,11 @@ export class HeaderTierService {
     }
     if (patch.header_value !== undefined) {
       row.header_value = this.validateHeaderValue(patch.header_value);
+    }
+    if (patch.header_key !== undefined || patch.header_value !== undefined) {
+      const { headerKey, headerValue } = this.validateHeaderRule(row.header_key, row.header_value);
+      row.header_key = headerKey;
+      row.header_value = headerValue;
     }
     if (patch.badge_color !== undefined) {
       row.badge_color = this.validateColor(patch.badge_color);
@@ -325,9 +334,9 @@ export class HeaderTierService {
     return name;
   }
 
-  private validateHeaderKey(raw: string): string {
+  private validateHeaderKey(raw: string | null | undefined): string | null {
     const key = (raw ?? '').trim().toLowerCase();
-    if (!key) throw new BadRequestException('Header key is required');
+    if (!key) return null;
     if (!HEADER_KEY_RE.test(key)) {
       throw new BadRequestException(
         `Header keys can only contain lowercase letters, digits, and hyphens`,
@@ -341,9 +350,9 @@ export class HeaderTierService {
     return key;
   }
 
-  private validateHeaderValue(raw: string): string {
+  private validateHeaderValue(raw: string | null | undefined): string | null {
     const val = (raw ?? '').trim();
-    if (!val) throw new BadRequestException('Header value is required');
+    if (!val) return null;
     if (val.length > MAX_HEADER_VALUE_LEN) {
       throw new BadRequestException(
         `Header value must be ${MAX_HEADER_VALUE_LEN} characters or fewer`,
@@ -359,14 +368,41 @@ export class HeaderTierService {
     return raw;
   }
 
+  private validateHeaderRule(
+    rawKey: string | null | undefined,
+    rawValue: string | null | undefined,
+  ): { headerKey: string | null; headerValue: string | null } {
+    const headerKey = this.validateHeaderKey(rawKey);
+    const headerValue = this.validateHeaderValue(rawValue);
+    if ((headerKey === null) !== (headerValue === null)) {
+      throw new BadRequestException(
+        'Both header key and header value are required for a match rule',
+      );
+    }
+    return { headerKey, headerValue };
+  }
+
   private assertNameAvailable(existing: HeaderTier[], name: string): void {
     const lower = name.toLowerCase();
     if (existing.some((t) => t.name.toLowerCase() === lower)) {
       throw new BadRequestException('A tier with this name already exists');
     }
+    const alias = customTierNameToModelAlias(name);
+    if (!alias) throw new BadRequestException('Name must include at least one letter or number');
+    if (getStaticModelAliases().includes(alias)) {
+      throw new BadRequestException('A tier with this model alias is reserved');
+    }
+    if (existing.some((t) => customTierNameToModelAlias(t.name) === alias)) {
+      throw new BadRequestException('A tier with this model alias already exists');
+    }
   }
 
-  private assertRuleAvailable(existing: HeaderTier[], key: string, value: string): void {
+  private assertRuleAvailable(
+    existing: HeaderTier[],
+    key: string | null,
+    value: string | null,
+  ): void {
+    if (!key || !value) return;
     if (existing.some((t) => t.header_key === key && t.header_value === value)) {
       throw new BadRequestException(
         'Another tier already matches this header key and value combination',

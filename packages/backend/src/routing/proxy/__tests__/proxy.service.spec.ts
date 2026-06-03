@@ -339,7 +339,7 @@ describe('ProxyService — orchestration', () => {
       });
     });
 
-    it('routes custom model values by header tier id', async () => {
+    it('routes custom model values resolved from header tier slugs', async () => {
       resolveService.resolveForHeaderTier.mockResolvedValue({
         tier: 'standard',
         route: route('xai', 'api_key', 'grok-4'),

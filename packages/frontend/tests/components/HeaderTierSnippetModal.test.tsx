@@ -62,31 +62,31 @@ describe("HeaderTierSnippetModal", () => {
     expect(title?.textContent).toContain("Premium");
   });
 
-  it("renders the tier id in the description", () => {
+  it("renders the name-derived tier slug in the description", () => {
     const { container } = render(() => (
       <HeaderTierSnippetModal agentName="demo" tier={baseTier} onClose={vi.fn()} />
     ));
     const codes = Array.from(container.querySelectorAll(".modal-card__desc code"));
-    expect(codes.map((code) => code.textContent)).toContain("ht-1");
+    expect(codes.map((code) => code.textContent)).toContain("premium");
   });
 
-  it("still shows the tier id when override_route is null", () => {
+  it("still shows the tier slug when override_route is null", () => {
     const tier = { ...baseTier, override_route: null };
     const { container } = render(() => (
       <HeaderTierSnippetModal agentName="demo" tier={tier} onClose={vi.fn()} />
     ));
     const codes = Array.from(container.querySelectorAll(".modal-card__desc code"));
-    expect(codes.map((code) => code.textContent)).toContain("ht-1");
+    expect(codes.map((code) => code.textContent)).toContain("premium");
     expect(codes.map((code) => code.textContent)).toContain(
       "no model assigned (falls back to default routing)",
     );
   });
 
-  it("passes the tier id as the FrameworkSnippets modelId", () => {
+  it("passes the tier slug as the FrameworkSnippets modelId", () => {
     const { getByTestId } = render(() => (
       <HeaderTierSnippetModal agentName="demo" tier={baseTier} onClose={vi.fn()} />
     ));
-    expect(getByTestId("snippets-model-id").textContent).toBe("ht-1");
+    expect(getByTestId("snippets-model-id").textContent).toBe("premium");
     expect(getByTestId("snippets-custom-headers").textContent).toBe("null");
   });
 

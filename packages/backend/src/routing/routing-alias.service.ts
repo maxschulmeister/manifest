@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
   classifyModelAlias,
+  customTierNameToModelAlias,
   DEFAULT_TIER_SLOT,
   getStaticModelAliases,
   SPECIFICITY_CATEGORIES,
@@ -51,17 +52,17 @@ export class RoutingAliasService {
 
     const headerTiers = await this.headerTierService.list(agentId);
     for (const tier of headerTiers) {
-      if (tier.enabled && readOverrideRoute(tier)) ids.push(tier.id);
+      if (tier.enabled && readOverrideRoute(tier)) ids.push(customTierNameToModelAlias(tier.name));
     }
 
     return ids;
   }
 
   async listAcceptedModelIds(agentId: string): Promise<string[]> {
-    const customIds = (await this.headerTierService.list(agentId))
+    const customAliases = (await this.headerTierService.list(agentId))
       .filter((tier) => tier.enabled)
-      .map((tier) => tier.id);
-    return [...getStaticModelAliases(), ...customIds];
+      .map((tier) => customTierNameToModelAlias(tier.name));
+    return [...getStaticModelAliases(), ...customAliases];
   }
 
   async classifyModel(agentId: string, model: string): Promise<ModelAliasClassification | null> {
@@ -69,7 +70,7 @@ export class RoutingAliasService {
     if (staticAlias) return staticAlias;
 
     const customTier = (await this.headerTierService.list(agentId)).find(
-      (tier) => tier.enabled && tier.id === model,
+      (tier) => tier.enabled && customTierNameToModelAlias(tier.name) === model,
     );
     return customTier ? { kind: 'header_tier', id: customTier.id } : null;
   }

@@ -25,6 +25,7 @@ export type { SpecificityCategory } from './specificity';
 export {
   aliasToSpecificityCategory,
   classifyModelAlias,
+  customTierNameToModelAlias,
   getStaticModelAliases,
   getValidAliases,
   specificityCategoryToAlias,

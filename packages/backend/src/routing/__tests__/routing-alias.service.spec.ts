@@ -27,7 +27,7 @@ describe('RoutingAliasService', () => {
     );
   });
 
-  it('lists routable builtin tiers and specificity aliases plus custom tier ids', async () => {
+  it('lists routable builtin tiers and specificity aliases plus custom tier slugs', async () => {
     tierService.getTiers.mockResolvedValue([
       {
         tier: 'simple',
@@ -65,7 +65,7 @@ describe('RoutingAliasService', () => {
       'auto',
       'simple',
       'web-browsing',
-      'ht-fast',
+      'fast',
     ]);
   });
 
@@ -80,15 +80,15 @@ describe('RoutingAliasService', () => {
     });
   });
 
-  it('classifies enabled custom tiers by exact id only', async () => {
+  it('classifies enabled custom tiers by name-derived slug', async () => {
     headerTierService.list.mockResolvedValue([
-      { id: 'ht-fast', name: 'Fast', enabled: true, override_route: null },
+      { id: 'ht-fast', name: 'Fast Lane', enabled: true, override_route: null },
     ] as never);
 
-    await expect(svc.classifyModel('agent-1', 'ht-fast')).resolves.toEqual({
+    await expect(svc.classifyModel('agent-1', 'fast-lane')).resolves.toEqual({
       kind: 'header_tier',
       id: 'ht-fast',
     });
-    await expect(svc.classifyModel('agent-1', 'fast')).resolves.toBeNull();
+    await expect(svc.classifyModel('agent-1', 'ht-fast')).resolves.toBeNull();
   });
 });

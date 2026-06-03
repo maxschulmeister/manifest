@@ -199,6 +199,40 @@ describe('HeaderTierModal', () => {
       expect(onClose).toHaveBeenCalled();
     });
 
+    it('keeps the header value field editable when the key is blank', () => {
+      const { container } = render(() => (
+        <HeaderTierModal agentName="demo" existingTiers={[]} onClose={vi.fn()} onSaved={vi.fn()} />
+      ));
+
+      expect((container.querySelector('#header-tier-value') as HTMLInputElement).disabled).toBe(
+        false,
+      );
+    });
+
+    it('submits without a header rule when both header fields are blank', async () => {
+      const { container } = render(() => (
+        <HeaderTierModal agentName="demo" existingTiers={[]} onClose={vi.fn()} onSaved={vi.fn()} />
+      ));
+      fireEvent.input(container.querySelector('#header-tier-name') as HTMLInputElement, {
+        target: { value: 'Premium' },
+      });
+
+      fireEvent.click(
+        Array.from(container.querySelectorAll('button')).find((b) =>
+          b.textContent?.includes('Create tier'),
+        ) as HTMLButtonElement,
+      );
+
+      await waitFor(() => {
+        expect(mockCreateHeaderTier).toHaveBeenCalledWith('demo', {
+          name: 'Premium',
+          header_key: null,
+          header_value: null,
+          badge_color: 'indigo',
+        });
+      });
+    });
+
     it('shows a name error when the name is empty after a submission attempt', async () => {
       const { container } = render(() => (
         <HeaderTierModal agentName="demo" existingTiers={[]} onClose={vi.fn()} onSaved={vi.fn()} />
@@ -431,6 +465,35 @@ describe('HeaderTierModal', () => {
           name: 'Premium',
           header_key: 'x-manifest-tier',
           header_value: 'premium',
+          badge_color: 'indigo',
+        });
+      });
+    });
+
+    it('allows editing the header value on an existing tier', async () => {
+      const { container } = render(() => (
+        <HeaderTierModal
+          agentName="demo"
+          existingTiers={[existingTier]}
+          editing={existingTier}
+          onClose={vi.fn()}
+          onSaved={vi.fn()}
+        />
+      ));
+      fireEvent.input(container.querySelector('#header-tier-value') as HTMLInputElement, {
+        target: { value: 'enterprise' },
+      });
+      fireEvent.click(
+        Array.from(container.querySelectorAll('button')).find((b) =>
+          b.textContent?.includes('Save changes'),
+        ) as HTMLButtonElement,
+      );
+
+      await waitFor(() => {
+        expect(mockUpdateHeaderTier).toHaveBeenCalledWith('demo', existingTier.id, {
+          name: 'Premium',
+          header_key: 'x-manifest-tier',
+          header_value: 'enterprise',
           badge_color: 'indigo',
         });
       });
