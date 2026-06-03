@@ -363,12 +363,29 @@ const Routing: Component = () => {
       const updated = updatedRoutes.map((r) =>
         'kind' in r && r.kind === 'header_tier' ? r.id : r.model,
       );
+      mutateSpecificity((prev) =>
+        prev?.map((a) => (a.category === tierId ? { ...a, fallback_routes: updatedRoutes } : a)),
+      );
       try {
         const { setSpecificityFallbacks } = await import('../services/api.js');
-        await setSpecificityFallbacks(agentName(), tierId, updated, updatedRoutes);
-        await refetchSpecificity();
+        const persistedRoutes = await setSpecificityFallbacks(
+          agentName(),
+          tierId,
+          updated,
+          updatedRoutes,
+        );
+        mutateSpecificity((prev) =>
+          prev?.map((a) =>
+            a.category === tierId ? { ...a, fallback_routes: persistedRoutes } : a,
+          ),
+        );
         toast.success('Fallback tier added');
       } catch {
+        mutateSpecificity((prev) =>
+          prev?.map((a) =>
+            a.category === tierId ? { ...a, fallback_routes: sa?.fallback_routes ?? null } : a,
+          ),
+        );
         toast.error('Failed to add fallback tier');
       }
       return;

@@ -124,16 +124,22 @@ const FallbackList: Component<FallbackListProps> = (props) => {
   };
   const modelParamsScope = () => props.modelParamsScope ?? modelParamsScopeForTier(props.tier);
 
-  const headerTierLabel = (id: string): string | undefined =>
-    props.headerTierOptions?.find((tier) => tier.id === id)?.name ??
-    props.headerTiers?.find((tier) => tier.id === id)?.name;
+  const headerTierForId = (id: string): HeaderTierOption | undefined =>
+    props.headerTierOptions?.find((tier) => tier.id === id) ??
+    props.headerTiers?.find((tier) => tier.id === id);
+
+  const headerTierForRow = (model: string, index: number): HeaderTierOption | undefined => {
+    const route = props.fallbackRoutes?.[index];
+    if (route && 'kind' in route && route.kind === 'header_tier') return headerTierForId(route.id);
+    return headerTierForId(model);
+  };
 
   const fallbackLabel = (model: string, index: number): string => {
     const route = props.fallbackRoutes?.[index];
-    if (route && 'kind' in route && route.kind === 'header_tier') {
-      return headerTierLabel(route.id) ?? route.id;
-    }
-    return headerTierLabel(model) ?? modelLabel(model);
+    const tier = headerTierForRow(model, index);
+    if (tier) return tier.name;
+    if (route && 'kind' in route && route.kind === 'header_tier') return route.id;
+    return modelLabel(model);
   };
 
   const modelInfoFor = (model: string, index: number): AvailableModel | undefined => {
@@ -392,15 +398,8 @@ const FallbackList: Component<FallbackListProps> = (props) => {
               // dropped. The bare `entry` string carries only the model name.
               const model = () => entry;
               const route = () => props.fallbackRoutes?.[i()];
-              const isHeaderTier = () => {
-                const r = route();
-                return !!r && 'kind' in r && r.kind === 'header_tier';
-              };
-              const resolvedHeaderTier = () => {
-                if (!isHeaderTier()) return undefined;
-                const r = route() as { kind: 'header_tier'; id: string };
-                return props.headerTiers?.find((t) => t.id === r.id);
-              };
+              const headerTier = () => headerTierForRow(model(), i());
+              const isHeaderTier = () => !!headerTier();
               const pinnedLabel = () => {
                 const r = route();
                 return r && !('kind' in r) ? (r.keyLabel ?? null) : null;
@@ -429,7 +428,7 @@ const FallbackList: Component<FallbackListProps> = (props) => {
                     }}
                     title={
                       isHeaderTier()
-                        ? (resolvedHeaderTier()?.name ?? 'Custom tier')
+                        ? (headerTier()?.name ?? 'Custom tier')
                         : skippedInStream(model(), i())
                           ? 'Skipped while Stream mode is active'
                           : undefined

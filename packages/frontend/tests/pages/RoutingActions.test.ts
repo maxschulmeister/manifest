@@ -456,6 +456,42 @@ describe("createRoutingActions", () => {
     });
   });
 
+  describe("handleAddHeaderTierFallback", () => {
+    it("optimistically stores the header-tier route target before persistence resolves", async () => {
+      let resolvePersist: (routes: unknown[]) => void = () => {};
+      mockSetFallbacks.mockReturnValue(
+        new Promise((resolve) => {
+          resolvePersist = resolve;
+        }),
+      );
+      const { actions } = setupActions();
+      const pending = actions.handleAddHeaderTierFallback("simple", "ht_123");
+
+      expect(actions.getTier("simple")?.fallback_routes).toEqual([
+        { provider: "openai", authType: "api_key", model: "fb-1" },
+        { provider: "anthropic", authType: "api_key", model: "fb-2" },
+        { kind: "header_tier", id: "ht_123" },
+      ]);
+      expect(actions.getFallbacksFor("simple")).toEqual(["fb-1", "fb-2", "ht_123"]);
+
+      resolvePersist([
+        { provider: "openai", authType: "api_key", model: "fb-1" },
+        { provider: "anthropic", authType: "api_key", model: "fb-2" },
+        { kind: "header_tier", id: "ht_123" },
+      ]);
+      await pending;
+    });
+
+    it("rolls back an optimistic header-tier target when persistence fails", async () => {
+      mockSetFallbacks.mockRejectedValue(new Error("boom"));
+      const { actions } = setupActions();
+      await actions.handleAddHeaderTierFallback("simple", "ht_123");
+
+      expect(actions.getTier("simple")?.fallback_routes).toEqual(baseTier.fallback_routes);
+      expect(actions.getFallbacksFor("simple")).toEqual(["fb-1", "fb-2"]);
+    });
+  });
+
   describe("handleFallbackUpdate", () => {
     it("merges fallback_routes into the matching tier when routes are passed", () => {
       const { actions } = setupActions();
