@@ -32,6 +32,7 @@ export interface RoutingTierCardProps {
   models: () => AvailableModel[];
   customProviders: () => CustomProviderData[];
   activeProviders: () => RoutingProvider[];
+  headerTierOptions?: () => { id: string; name: string }[];
   tiersLoading: boolean;
   changingTier: () => string | null;
   resettingTier: () => string | null;
@@ -208,6 +209,7 @@ const RoutingTierCard: Component<RoutingTierCardProps> = (props) => {
           models={props.models()}
           customProviders={props.customProviders()}
           connectedProviders={props.activeProviders()}
+          headerTierOptions={props.headerTierOptions?.()}
           primaryModel={eff}
           primaryRoute={primaryRoute}
           fallbacks={() => props.getFallbacksFor(props.stage.id)}

@@ -27,6 +27,11 @@ import ModelParamsAffordance from './ModelParamsAffordance.jsx';
 import RouteKeyChip from './RouteKeyChip.js';
 import { modelParamsScopeForTier } from 'manifest-shared';
 
+interface HeaderTierOption {
+  id: string;
+  name: string;
+}
+
 interface FallbackListProps {
   agentName: string;
   tier: string;
@@ -42,6 +47,7 @@ interface FallbackListProps {
   models: AvailableModel[];
   customProviders: CustomProviderData[];
   connectedProviders: RoutingProvider[];
+  headerTierOptions?: HeaderTierOption[];
   // FallbackList always passes both arguments. The second is optional in the
   // signature so parents whose optimistic-state model doesn't track
   // fallback_routes separately can omit it and still type-check; the next
@@ -114,6 +120,18 @@ const FallbackList: Component<FallbackListProps> = (props) => {
     return stripCustomPrefix(model);
   };
   const modelParamsScope = () => props.modelParamsScope ?? modelParamsScopeForTier(props.tier);
+
+  const headerTierForId = (id: string): HeaderTierOption | undefined =>
+    props.headerTierOptions?.find((tier) => tier.id === id);
+
+  const headerTierForRow = (model: string, index: number): HeaderTierOption | undefined => {
+    const route = props.fallbackRoutes?.[index];
+    if (route && 'kind' in route && route.kind === 'header_tier') return headerTierForId(route.id);
+    return headerTierForId(model);
+  };
+
+  const fallbackLabel = (model: string, index: number): string =>
+    headerTierForRow(model, index)?.name ?? modelLabel(model);
 
   const modelInfoFor = (model: string, index: number): AvailableModel | undefined => {
     const route = props.fallbackRoutes?.[index];
@@ -371,10 +389,7 @@ const FallbackList: Component<FallbackListProps> = (props) => {
               // dropped. The bare `entry` string carries only the model name.
               const model = () => entry;
               const route = () => props.fallbackRoutes?.[i()];
-              const isHeaderTier = () => {
-                const r = route();
-                return !!r && 'kind' in r && r.kind === 'header_tier';
-              };
+              const isHeaderTier = () => !!headerTierForRow(model(), i());
               const pinnedLabel = () => {
                 const r = route();
                 return r && !('kind' in r) ? (r.keyLabel ?? null) : null;
@@ -398,6 +413,7 @@ const FallbackList: Component<FallbackListProps> = (props) => {
                       'fallback-list__card--dragging': dragIndex() === i(),
                       'fallback-list__card--swapping': props.swappingIndex === i(),
                       'fallback-list__card--skipped': skippedInStream(model(), i()),
+                      'fallback-list__card--header-tier': isHeaderTier(),
                     }}
                     title={
                       skippedInStream(model(), i())
@@ -472,7 +488,7 @@ const FallbackList: Component<FallbackListProps> = (props) => {
                           );
                         })()}
                       </Show>
-                      <span class="fallback-list__model">{modelLabel(model())}</span>
+                      <span class="fallback-list__model">{fallbackLabel(model(), i())}</span>
                       <Show when={skippedInStream(model(), i())}>
                         <span class="routing-card__skipped-badge">Skipped in Stream</span>
                       </Show>
@@ -480,7 +496,7 @@ const FallbackList: Component<FallbackListProps> = (props) => {
                         <RouteKeyChip
                           keys={keys()}
                           currentLabel={pinnedLabel() ?? undefined}
-                          modelLabel={modelLabel(model())}
+                          modelLabel={fallbackLabel(model(), i())}
                           usedLabels={() =>
                             usedKeyLabelsForModelInTier(
                               (props.tierData ?? (() => undefined))(),
@@ -507,7 +523,7 @@ const FallbackList: Component<FallbackListProps> = (props) => {
                           provider={provId()}
                           authType={(auth() as AuthType) ?? undefined}
                           model={model()}
-                          slotLabel={modelLabel(model())}
+                          slotLabel={fallbackLabel(model(), i())}
                           scope={modelParamsScope()}
                           agentName={props.agentName}
                           getParams={props.getModelParams!}

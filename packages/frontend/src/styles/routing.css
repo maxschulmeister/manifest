@@ -1622,6 +1622,16 @@
   background: hsl(var(--muted) / 0.3);
 }
 
+.fallback-list__card--header-tier {
+  border-color: hsl(var(--primary) / 0.45);
+  background: hsl(var(--primary) / 0.08);
+  color: hsl(var(--primary));
+}
+
+.fallback-list__card--header-tier:hover {
+  background: hsl(var(--primary) / 0.12);
+}
+
 .fallback-list__card--dragging {
   opacity: 0.3;
 }

@@ -270,7 +270,9 @@ export function createRoutingActions(input: RoutingActionsInput) {
     const updated = updatedRoutes.map((r) =>
       'kind' in r && r.kind === 'header_tier' ? r.id : r.model,
     );
-    setFallbackOverrides((prev) => ({ ...prev, [tierId]: updated }));
+    input.mutateTiers((prev) =>
+      prev?.map((t) => (t.tier === tierId ? { ...t, fallback_routes: updatedRoutes } : t)),
+    );
     setAddingFallback(tierId);
     try {
       const persistedRoutes = await setFallbacks(input.agentName(), tierId, updated, updatedRoutes);
@@ -279,18 +281,13 @@ export function createRoutingActions(input: RoutingActionsInput) {
       );
       toast.success('Fallback tier added');
     } catch {
-      setFallbackOverrides((prev) => {
-        const next = { ...prev };
-        delete next[tierId];
-        return next;
-      });
+      input.mutateTiers((prev) =>
+        prev?.map((t) =>
+          t.tier === tierId ? { ...t, fallback_routes: tier?.fallback_routes ?? null } : t,
+        ),
+      );
     } finally {
       setAddingFallback(null);
-      setFallbackOverrides((prev) => {
-        const next = { ...prev };
-        delete next[tierId];
-        return next;
-      });
     }
   };
 
