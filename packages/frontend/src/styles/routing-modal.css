@@ -188,6 +188,7 @@
 .routing-modal__model--tier .routing-modal__model-cell--tier-models {
   justify-content: flex-end;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 .routing-modal__tier-model-entry {
@@ -389,6 +390,11 @@
   line-height: 1.35;
   white-space: nowrap;
   text-align: right;
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: end;
+  gap: 8px;
 }
 
 .routing-modal__model-id {
