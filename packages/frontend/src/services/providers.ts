@@ -2,6 +2,11 @@
 
 import { SHARED_PROVIDER_BY_ID, type SharedProviderEntry } from 'manifest-shared';
 
+export interface SubscriptionEndpointRegion {
+  value: string;
+  label: string;
+}
+
 export interface ProviderDef {
   id: string;
   name: string;
@@ -20,6 +25,8 @@ export interface ProviderDef {
   subscriptionLabel?: string;
   /** Placeholder for the subscription token input (providers that need a pasted token). */
   subscriptionKeyPlaceholder?: string;
+  /** Optional note shown near the subscription credential field. */
+  subscriptionRequirementNote?: string;
   /**
    * Credential kind used for subscription auth. Drives the input label and
    * aria-labels in the subscription detail view. Defaults to 'setup-token'
@@ -34,6 +41,8 @@ export interface ProviderDef {
   deviceLogin?: boolean;
   /** UI auth mode for subscription flows. */
   subscriptionAuthMode?: 'popup_oauth' | 'popup_paste' | 'device_code' | 'token';
+  /** Optional endpoint selector for token-mode subscription providers. */
+  subscriptionEndpointRegions?: SubscriptionEndpointRegion[];
   /**
    * Optional secondary subscription path. Lets a provider expose a pasted-token
    * shortcut alongside its primary OAuth/device-code flow — currently used so
@@ -74,11 +83,13 @@ interface ProviderUIOverlay {
   supportsSubscription?: boolean;
   subscriptionLabel?: string;
   subscriptionKeyPlaceholder?: string;
+  subscriptionRequirementNote?: string;
   subscriptionCredentialKind?: 'setup-token' | 'api-key';
   subscriptionCredentialName?: string;
   subscriptionCommand?: string;
   deviceLogin?: boolean;
   subscriptionAuthMode?: 'popup_oauth' | 'popup_paste' | 'device_code' | 'token';
+  subscriptionEndpointRegions?: SubscriptionEndpointRegion[];
   subscriptionTokenAlternative?: {
     prefix: string;
     placeholder: string;
@@ -96,7 +107,13 @@ interface ProviderUIOverlay {
 const PROVIDER_UI: Record<string, ProviderUIOverlay> = {
   qwen: {
     initial: 'Al',
-    subtitle: 'Qwen3, Qwen2.5, QwQ',
+    subtitle: 'Qwen, DeepSeek, Kimi, GLM via Alibaba Cloud',
+    supportsSubscription: true,
+    subscriptionLabel: 'Qwen Token Plan',
+    subscriptionAuthMode: 'token',
+    subscriptionCredentialKind: 'api-key',
+    subscriptionCredentialName: 'Qwen Token Plan',
+    subscriptionKeyPlaceholder: 'Paste your Qwen Token Plan API key',
     models: [],
   },
   anthropic: {
@@ -105,6 +122,18 @@ const PROVIDER_UI: Record<string, ProviderUIOverlay> = {
     supportsSubscription: true,
     subscriptionLabel: 'Claude Max / Pro subscription',
     subscriptionAuthMode: 'popup_paste',
+    models: [],
+  },
+  byteplus: {
+    initial: 'Bp',
+    subtitle: 'Ark Code, Seed Code, GLM, Kimi',
+    supportsSubscription: true,
+    subscriptionOnly: true,
+    subscriptionLabel: 'ModelArk Coding Plan',
+    subscriptionAuthMode: 'token',
+    subscriptionCredentialKind: 'api-key',
+    subscriptionCredentialName: 'ModelArk Coding Plan',
+    subscriptionKeyPlaceholder: 'Paste your ModelArk Coding Plan API key',
     models: [],
   },
   deepseek: {
@@ -141,6 +170,18 @@ const PROVIDER_UI: Record<string, ProviderUIOverlay> = {
       { label: 'GPT-4o', value: 'copilot/gpt-4o' },
       { label: 'GPT-4o Mini', value: 'copilot/gpt-4o-mini' },
     ],
+  },
+  commandcode: {
+    initial: 'CC',
+    subtitle: 'Claude, GPT, Kimi, DeepSeek, Qwen',
+    supportsSubscription: true,
+    subscriptionOnly: true,
+    subscriptionLabel: 'Command Code subscription',
+    subscriptionAuthMode: 'token',
+    subscriptionCredentialKind: 'api-key',
+    subscriptionKeyPlaceholder: 'Paste your Command Code API key',
+    subscriptionRequirementNote: 'Requires Command Code Pro or higher.',
+    models: [],
   },
   gemini: {
     initial: 'G',
@@ -195,6 +236,22 @@ const PROVIDER_UI: Record<string, ProviderUIOverlay> = {
       placeholder: 'sk-cp-...',
       dividerLabel: 'Or paste your Coding Plan token',
     },
+    models: [],
+  },
+  xiaomi: {
+    initial: 'Mi',
+    subtitle: 'MiMo V2.5 Pro, V2.5, Flash',
+    supportsSubscription: true,
+    subscriptionLabel: 'Xiaomi MiMo Token Plan',
+    subscriptionAuthMode: 'token',
+    subscriptionCredentialKind: 'api-key',
+    subscriptionCredentialName: 'MiMo Token Plan',
+    subscriptionKeyPlaceholder: 'Paste your MiMo Token Plan API key',
+    subscriptionEndpointRegions: [
+      { value: 'cn', label: 'China (token-plan-cn)' },
+      { value: 'sgp', label: 'Singapore (token-plan-sgp)' },
+      { value: 'ams', label: 'Europe (token-plan-ams)' },
+    ],
     models: [],
   },
   mistral: {
@@ -299,6 +356,10 @@ const PROVIDER_UI: Record<string, ProviderUIOverlay> = {
     subscriptionAuthMode: 'token',
     subscriptionKeyPlaceholder: 'Paste your Z.ai API key',
     subscriptionCredentialKind: 'api-key',
+    subscriptionEndpointRegions: [
+      { value: 'global', label: 'Outside China (api.z.ai)' },
+      { value: 'cn', label: 'China Mainland (open.bigmodel.cn)' },
+    ],
     models: [],
   },
 };
@@ -326,6 +387,8 @@ export function buildProviderDef(shared: SharedProviderEntry): ProviderDef {
 const PROVIDER_ORDER = [
   'qwen',
   'anthropic',
+  'byteplus',
+  'commandcode',
   'deepseek',
   'fireworks',
   'copilot',
@@ -346,6 +409,7 @@ const PROVIDER_ORDER = [
   'opencode-zen',
   'openrouter',
   'xai',
+  'xiaomi',
   'zai',
 ];
 

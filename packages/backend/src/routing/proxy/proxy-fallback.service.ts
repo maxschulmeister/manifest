@@ -32,6 +32,7 @@ interface ForwardProviderOptions {
   signal?: AbortSignal;
   authType?: string;
   rawApiKey?: string;
+  providerKeyLabel?: string;
   agentId?: string;
   userId?: string;
   resourceUrl?: string;
@@ -46,29 +47,21 @@ interface ForwardProviderOptions {
 import { ProviderKeyService } from '../routing-core/provider-key.service';
 import { CustomProvider } from '../../entities/custom-provider.entity';
 import { CustomProviderService } from '../custom-provider/custom-provider.service';
+import { resolveForwardEndpoint } from './forward-endpoint-resolver';
 import { OpenaiOauthService } from '../oauth/openai-oauth.service';
 import { MinimaxOauthService } from '../oauth/minimax-oauth.service';
 import { AnthropicOauthService } from '../oauth/anthropic/anthropic-oauth.service';
 import { GeminiOauthService } from '../oauth/gemini-oauth.service';
-import { parseOAuthTokenBlob } from '../oauth/core';
 import { KiroOauthService } from '../oauth/kiro-oauth.service';
 import { XaiOauthService } from '../oauth/xai/xai-oauth.service';
 import { ModelPricingCacheService } from '../../model-prices/model-pricing-cache.service';
 import { ProviderClient, ForwardResult } from './provider-client';
-import {
-  buildCustomEndpoint,
-  buildEndpointOverride,
-  ProviderEndpoint,
-  resolveEndpointKey,
-} from './provider-endpoints';
+import { resolveEndpointKey } from './provider-endpoints';
 import { CopilotTokenService } from './copilot-token.service';
 import { ReasoningContentCache } from './reasoning-content-cache';
 import { buildProviderExtraHeaders } from './provider-hooks';
 import { shouldTriggerFallback } from './fallback-status-codes';
 import { inferProviderFromModelName } from '../../common/utils/provider-aliases';
-import { normalizeMinimaxSubscriptionBaseUrl } from '../provider-base-url';
-import { MINIMAX_BASE_URLS } from '../oauth/minimax-oauth-helpers';
-import { getQwenCompatibleBaseUrl, isQwenResolvedRegion } from '../qwen-region';
 import { normalizeAnthropicShortModelId } from '../../common/utils/anthropic-model-id';
 import {
   isTransportError,
@@ -77,6 +70,11 @@ import {
 } from './proxy-transport';
 import type { SignatureLookup, ThinkingBlockLookup, ReasoningContentLookup } from './proxy-types';
 import type { ProxyApiMode } from './proxy-types';
+import {
+  isRefreshableOAuthCredential,
+  refreshRejectedOAuthCredential,
+  resolveApiKey,
+} from './oauth-credentials';
 
 export interface FailedFallback {
   model: string;
@@ -191,10 +189,10 @@ export class ProxyFallbackService {
       let authType: AuthType;
       // Pinned key label: prefer the structured route's keyLabel. Each
       // fallback can be pinned to a specific provider key (e.g. "Work" vs
-      // "Personal" Anthropic Console). When no route is supplied (legacy
-      // string-only inputs), the pin is undefined and we fall back to the
-      // priority-0 default key inside getProviderApiKey().
-      const providerKeyLabel = route?.keyLabel ?? undefined;
+      // "Personal" Anthropic Console). When no label is supplied for a
+      // subscription fallback, resolve the priority-0 key's label so OAuth
+      // refresh persistence updates the same key getProviderApiKey selected.
+      let providerKeyLabel = route?.keyLabel ?? undefined;
 
       if (route) {
         provider = route.provider;
@@ -224,6 +222,13 @@ export class ProxyFallbackService {
           excludeAuth,
         )) as AuthType;
       }
+      if (!providerKeyLabel && authType === 'subscription') {
+        providerKeyLabel = await this.providerKeyService.getDefaultKeyLabel(
+          agentId,
+          provider,
+          authType,
+        );
+      }
 
       const model = normalizeProviderModel(provider, requestedModel);
       const apiKey = await this.providerKeyService.getProviderApiKey(
@@ -251,12 +256,23 @@ export class ProxyFallbackService {
         this.geminiOauth,
         this.kiroOauth,
         this.xaiOauth,
+        providerKeyLabel,
       );
       if (resolvedCredentials.apiKey === null) {
         this.logger.debug(
           `Fallback ${i}: skipping model=${model} provider=${provider} (OAuth token unavailable)`,
         );
         continue;
+      }
+      let rawApiKey = apiKey;
+      if (authType === 'subscription' && isRefreshableOAuthCredential(apiKey)) {
+        rawApiKey =
+          (await this.providerKeyService.getProviderApiKey(
+            agentId,
+            provider,
+            authType,
+            providerKeyLabel,
+          )) ?? apiKey;
       }
       const providerRegion = await this.providerKeyService.getProviderRegion(
         agentId,
@@ -280,7 +296,8 @@ export class ProxyFallbackService {
         signal,
         agentId,
         userId,
-        rawApiKey: apiKey,
+        rawApiKey,
+        providerKeyLabel,
         authType,
         apiMode,
         resourceUrl: resolvedCredentials.resourceUrl,
@@ -360,6 +377,7 @@ export class ProxyFallbackService {
       opts.rawApiKey,
       opts.agentId,
       opts.userId,
+      opts.providerKeyLabel,
       {
         openaiOauth: this.openaiOauth,
         minimaxOauth: this.minimaxOauth,
@@ -423,59 +441,23 @@ export class ProxyFallbackService {
       effectiveKey = await this.copilotToken.getCopilotToken(opts.apiKey);
     }
 
-    let customEndpoint: ProviderEndpoint | undefined;
-    let forwardModel = opts.model;
-
-    // Strip the "copilot/" prefix -- the Copilot API expects bare model names
-    if (provider.toLowerCase() === 'copilot' && forwardModel.startsWith('copilot/')) {
-      forwardModel = forwardModel.substring('copilot/'.length);
-    }
-
-    // Strip the "minimax/" prefix for MiniMax subscription routes. Vendor-
-    // prefixed model IDs can come in from OpenRouter pricing fallbacks
-    // (e.g. `minimax/MiniMax-M2.7`), and when we set a custom endpoint below
-    // for the CN region the request would otherwise reach MiniMax with the
-    // prefix intact and 404. The provider-endpoint resolver normally strips
-    // it for `minimax-subscription`, but a `customEndpoint` short-circuits
-    // that and ProviderClient.stripModelPrefix leaves `custom` keys alone.
-    if (
-      provider.toLowerCase() === 'minimax' &&
-      authType === 'subscription' &&
-      forwardModel.toLowerCase().startsWith('minimax/')
-    ) {
-      forwardModel = forwardModel.substring('minimax/'.length);
-    }
-
-    if (CustomProviderService.isCustom(provider)) {
-      const cpId = CustomProviderService.extractId(provider);
-      const cp = await this.customProviderRepo.findOne({ where: { id: cpId } });
-      if (cp) {
-        customEndpoint = buildCustomEndpoint(cp.base_url, cp.api_kind ?? 'openai');
-        forwardModel = CustomProviderService.rawModelName(opts.model);
-      }
-    } else if (resolveEndpointKey(provider) === 'qwen' && isQwenResolvedRegion(providerRegion)) {
-      customEndpoint = buildEndpointOverride(getQwenCompatibleBaseUrl(providerRegion), 'qwen');
-    } else if (authType === 'subscription' && provider.toLowerCase() === 'minimax') {
-      // OAuth-issued tokens carry the chosen region inside the JSON blob's
-      // resource_url (resourceUrl). Pasted Coding Plan tokens (`sk-cp-`)
-      // don't — for those we read the persisted region column. We only
-      // build a custom endpoint when the region is CN; global already
-      // matches the built-in `minimax-subscription` endpoint base URL, and
-      // overriding it would shift the route through the `custom` endpoint
-      // key, which preserves vendor-prefixed model IDs that this provider
-      // would otherwise strip and reject.
-      if (resourceUrl) {
-        const minimaxBaseUrl = normalizeMinimaxSubscriptionBaseUrl(resourceUrl);
-        if (minimaxBaseUrl) {
-          customEndpoint = buildEndpointOverride(minimaxBaseUrl, 'minimax-subscription');
-        } else {
-          this.logger.warn('Ignoring invalid MiniMax subscription resource URL');
-        }
-      } else if (providerRegion === 'cn') {
-        const regionBaseUrl = `${MINIMAX_BASE_URLS.cn}/anthropic`;
-        customEndpoint = buildEndpointOverride(regionBaseUrl, 'minimax-subscription');
-      }
-    }
+    // Custom providers store their endpoint on a DB row; fetch it so the shared
+    // resolver can build the override. (Kept in the caller to keep the resolver
+    // synchronous + DB-free.)
+    const customProvider = CustomProviderService.isCustom(provider)
+      ? await this.customProviderRepo.findOne({
+          where: { id: CustomProviderService.extractId(provider) },
+        })
+      : null;
+    const { customEndpoint, forwardModel } = resolveForwardEndpoint({
+      provider,
+      authType,
+      model: opts.model,
+      providerRegion,
+      resourceUrl,
+      customProvider,
+      logger: this.logger,
+    });
 
     const reasoningEndpointKey =
       customEndpoint && customEndpoint.format !== 'openai'
@@ -526,131 +508,6 @@ export class ProxyFallbackService {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Shared helpers (used by both ProxyService and ProxyFallbackService)
-// ---------------------------------------------------------------------------
-
 export function normalizeProviderModel(provider: string, model: string): string {
   return provider.toLowerCase() === 'anthropic' ? normalizeAnthropicShortModelId(model) : model;
-}
-
-interface OAuthServiceSet {
-  openaiOauth: OpenaiOauthService;
-  minimaxOauth: MinimaxOauthService;
-  anthropicOauth: AnthropicOauthService;
-  geminiOauth: GeminiOauthService;
-  kiroOauth: KiroOauthService;
-  xaiOauth: XaiOauthService;
-}
-
-interface ResolvedCredentials {
-  apiKey: string | null;
-  resourceUrl?: string;
-}
-
-function expireRefreshableOAuthBlob(rawValue: string): string | null {
-  try {
-    const parsed = JSON.parse(rawValue) as unknown;
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
-    const blob = parsed as Record<string, unknown>;
-    if (typeof blob.t !== 'string' || typeof blob.r !== 'string' || typeof blob.e !== 'number') {
-      return null;
-    }
-    if (!blob.r) return null;
-    return JSON.stringify({ ...blob, e: 0 });
-  } catch {
-    return null;
-  }
-}
-
-async function refreshRejectedOAuthCredential(
-  provider: string,
-  rawValue: string,
-  agentId: string,
-  userId: string,
-  services: OAuthServiceSet,
-): Promise<ResolvedCredentials | null> {
-  const expiredRawValue = expireRefreshableOAuthBlob(rawValue);
-  if (!expiredRawValue) return null;
-
-  const lower = provider.toLowerCase();
-  if (lower === 'openai') {
-    const unwrapped = await services.openaiOauth.unwrapToken(expiredRawValue, agentId, userId);
-    return unwrapped ? { apiKey: unwrapped } : null;
-  }
-  if (lower === 'minimax') {
-    const unwrapped = await services.minimaxOauth.unwrapToken(expiredRawValue, agentId, userId);
-    return unwrapped ? { apiKey: unwrapped.t, resourceUrl: unwrapped.u } : null;
-  }
-  if (lower === 'anthropic') {
-    const unwrapped = await services.anthropicOauth.unwrapToken(expiredRawValue, agentId, userId);
-    return unwrapped ? { apiKey: unwrapped } : null;
-  }
-  if (lower === 'gemini') {
-    const unwrapped = await services.geminiOauth.unwrapToken(expiredRawValue, agentId, userId);
-    return unwrapped ? { apiKey: unwrapped, resourceUrl: parseOAuthTokenBlob(rawValue)?.u } : null;
-  }
-  if (lower === 'kiro') {
-    const unwrapped = await services.kiroOauth.unwrapToken(expiredRawValue, agentId, userId);
-    return unwrapped ? { apiKey: unwrapped } : null;
-  }
-  if (lower === 'xai') {
-    const unwrapped = await services.xaiOauth.unwrapToken(expiredRawValue, agentId, userId);
-    return unwrapped ? { apiKey: unwrapped } : null;
-  }
-  return null;
-}
-
-export async function resolveApiKey(
-  provider: string,
-  apiKey: string,
-  authType: string | undefined,
-  agentId: string,
-  userId: string,
-  openaiOauth: OpenaiOauthService,
-  minimaxOauth: MinimaxOauthService,
-  anthropicOauth: AnthropicOauthService,
-  geminiOauth: GeminiOauthService,
-  kiroOauth: KiroOauthService,
-  xaiOauth: XaiOauthService,
-): Promise<ResolvedCredentials> {
-  if (authType === 'subscription') {
-    const lower = provider.toLowerCase();
-    if (lower === 'openai') {
-      const unwrapped = await openaiOauth.unwrapToken(apiKey, agentId, userId);
-      if (unwrapped) return { apiKey: unwrapped };
-      if (parseOAuthTokenBlob(apiKey)) return { apiKey: null };
-    }
-    if (lower === 'minimax') {
-      const unwrapped = await minimaxOauth.unwrapToken(apiKey, agentId, userId);
-      if (unwrapped) return { apiKey: unwrapped.t, resourceUrl: unwrapped.u };
-      if (parseOAuthTokenBlob(apiKey)) return { apiKey: null };
-    }
-    if (lower === 'anthropic') {
-      const unwrapped = await anthropicOauth.unwrapToken(apiKey, agentId, userId);
-      if (unwrapped) return { apiKey: unwrapped };
-      if (parseOAuthTokenBlob(apiKey)) return { apiKey: null };
-    }
-    if (lower === 'gemini') {
-      const unwrapped = await geminiOauth.unwrapToken(apiKey, agentId, userId);
-      if (unwrapped) {
-        // The CodeAssist project id was stored in `blob.u` by enrichBlob.
-        // Read it from the input blob (refreshes preserve the field).
-        const projectId = parseOAuthTokenBlob(apiKey)?.u;
-        return { apiKey: unwrapped, resourceUrl: projectId };
-      }
-      if (parseOAuthTokenBlob(apiKey)) return { apiKey: null };
-    }
-    if (lower === 'kiro') {
-      const unwrapped = await kiroOauth.unwrapToken(apiKey, agentId, userId);
-      if (unwrapped) return { apiKey: unwrapped };
-      if (parseOAuthTokenBlob(apiKey)) return { apiKey: null };
-    }
-    if (lower === 'xai') {
-      const unwrapped = await xaiOauth.unwrapToken(apiKey, agentId, userId);
-      if (unwrapped) return { apiKey: unwrapped };
-      if (parseOAuthTokenBlob(apiKey)) return { apiKey: null };
-    }
-  }
-  return { apiKey };
 }

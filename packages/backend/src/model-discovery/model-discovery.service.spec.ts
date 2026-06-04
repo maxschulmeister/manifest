@@ -326,10 +326,7 @@ describe('ModelDiscoveryService', () => {
 
       await service.discoverModels(makeProvider());
 
-      expect(mockModelRegistry.registerModels).toHaveBeenCalledWith('openai', [
-        'gpt-4o',
-        'gpt-4-turbo',
-      ]);
+      expect(mockModelRegistry.registerModels).toHaveBeenCalledWith('openai', models);
     });
 
     it('should not register models when native fetch returns empty', async () => {
@@ -731,6 +728,101 @@ describe('ModelDiscoveryService', () => {
     });
   });
 
+  /* ── getModelsForAgent caching ── */
+
+  describe('getModelsForAgent (cache)', () => {
+    beforeEach(() => {
+      providerRepo.find.mockResolvedValue([
+        makeProvider({ cached_models: [makeModel({ id: 'gpt-4', provider: 'openai' })] }),
+      ]);
+      customProviderRepo.find.mockResolvedValue([]);
+    });
+
+    it('serves the second call within TTL from cache (no extra DB hit)', async () => {
+      const first = await service.getModelsForAgent('agent-1');
+      const second = await service.getModelsForAgent('agent-1');
+
+      expect(second).toEqual(first);
+      // providerRepo.find is hit once for user_providers on the first call only.
+      expect(providerRepo.find).toHaveBeenCalledTimes(1);
+      expect(customProviderRepo.find).toHaveBeenCalledTimes(1);
+    });
+
+    it('isolates cache entries per agent', async () => {
+      await service.getModelsForAgent('agent-1');
+      await service.getModelsForAgent('agent-2');
+
+      // Distinct keys → distinct DB reads.
+      expect(providerRepo.find).toHaveBeenCalledTimes(2);
+    });
+
+    it('refetches after invalidate(agentId)', async () => {
+      await service.getModelsForAgent('agent-1');
+      service.invalidate('agent-1');
+      await service.getModelsForAgent('agent-1');
+
+      expect(providerRepo.find).toHaveBeenCalledTimes(2);
+    });
+
+    it('only invalidates the targeted agent', async () => {
+      await service.getModelsForAgent('agent-1');
+      await service.getModelsForAgent('agent-2');
+      service.invalidate('agent-1');
+
+      await service.getModelsForAgent('agent-1'); // refetch
+      await service.getModelsForAgent('agent-2'); // still cached
+
+      expect(providerRepo.find).toHaveBeenCalledTimes(3);
+    });
+
+    it('refetches after the TTL expires', async () => {
+      jest.useFakeTimers();
+      try {
+        await service.getModelsForAgent('agent-1');
+        jest.advanceTimersByTime(120_001);
+        await service.getModelsForAgent('agent-1');
+        expect(providerRepo.find).toHaveBeenCalledTimes(2);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('invalidates the agent cache after discoverModels rewrites cached_models', async () => {
+      // Warm the cache for agent-1.
+      await service.getModelsForAgent('agent-1');
+      expect(providerRepo.find).toHaveBeenCalledTimes(1);
+
+      // Discover models for the same agent → cached_models change on disk →
+      // the per-agent model cache must be dropped.
+      fetcher.fetch.mockResolvedValue([makeModel({ id: 'gpt-4o', provider: 'openai' })]);
+      await service.discoverModels(makeProvider({ agent_id: 'agent-1' }));
+
+      await service.getModelsForAgent('agent-1');
+      // Second getModelsForAgent must hit the DB again (find called twice for
+      // user_providers across the two getModelsForAgent calls).
+      expect(providerRepo.find).toHaveBeenCalledTimes(2);
+    });
+
+    it('sweeps expired entries on populate so the cache cannot grow unbounded', async () => {
+      jest.useFakeTimers();
+      try {
+        const cache = (service as unknown as { modelsCache: Map<string, unknown> }).modelsCache;
+        await service.getModelsForAgent('agent-1');
+        await service.getModelsForAgent('agent-2'); // sweep sees agent-1 still fresh (skip branch)
+        expect(cache.size).toBe(2);
+
+        jest.advanceTimersByTime(120_001); // agent-1 + agent-2 now expired
+        await service.getModelsForAgent('agent-3'); // sweep evicts the two stale entries
+
+        expect(cache.size).toBe(1);
+        expect(cache.has('agent-3')).toBe(true);
+        expect(providerRepo.find).toHaveBeenCalledTimes(3);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+  });
+
   /* ── getModelForAgent ── */
 
   describe('getModelForAgent', () => {
@@ -944,6 +1036,36 @@ describe('ModelDiscoveryService', () => {
 
       expect(result[0].inputPricePerToken).toBe(0.001);
       expect(result[0].displayName).toBe('New Model');
+    });
+
+    it('should enrich Xiaomi MiMo API-key models from provider pricing', async () => {
+      mockModelsDevSync.lookupModel.mockReturnValue(null);
+      mockPricingSync.lookupPricing.mockImplementation((key: string) => {
+        if (key === 'xiaomi/mimo-v2.5-pro') {
+          return {
+            input: 0.000003,
+            output: 0.000012,
+            displayName: 'MiMo V2.5 Pro',
+          };
+        }
+        return null;
+      });
+
+      fetcher.fetch.mockResolvedValue([
+        makeModel({
+          id: 'mimo-v2.5-pro',
+          provider: 'xiaomi',
+          inputPricePerToken: null,
+          outputPricePerToken: null,
+        }),
+      ]);
+
+      const result = await service.discoverModels(makeProvider({ provider: 'xiaomi' }));
+
+      expect(mockPricingSync.lookupPricing).toHaveBeenCalledWith('xiaomi/mimo-v2.5-pro');
+      expect(result[0].inputPricePerToken).toBe(0.000003);
+      expect(result[0].outputPricePerToken).toBe(0.000012);
+      expect(result[0].displayName).toBe('MiMo V2.5 Pro');
     });
 
     it('should skip prefix lookup when provider has no OpenRouter prefix', async () => {
@@ -1357,6 +1479,64 @@ describe('ModelDiscoveryService', () => {
       );
     });
 
+    it('routes Z.ai CN subscription discovery to the China Coding Plan host', async () => {
+      mockDecrypt.mockReturnValue('zai-sub-key');
+      fetcher.fetch.mockResolvedValue([]);
+
+      await service.discoverModels(
+        makeProvider({
+          provider: 'zai',
+          auth_type: 'subscription',
+          api_key_encrypted: 'encrypted',
+          region: 'cn',
+        }),
+      );
+
+      expect(fetcher.fetch).toHaveBeenCalledWith(
+        'zai',
+        'zai-sub-key',
+        'subscription',
+        'https://open.bigmodel.cn/api/coding/paas/v4',
+      );
+    });
+
+    it('leaves Z.ai global subscription discovery on the default outside-China host', async () => {
+      mockDecrypt.mockReturnValue('zai-sub-key');
+      fetcher.fetch.mockResolvedValue([]);
+
+      await service.discoverModels(
+        makeProvider({
+          provider: 'zai',
+          auth_type: 'subscription',
+          api_key_encrypted: 'encrypted',
+          region: 'global',
+        }),
+      );
+
+      expect(fetcher.fetch).toHaveBeenCalledWith('zai', 'zai-sub-key', 'subscription', undefined);
+    });
+
+    it('routes Xiaomi MiMo Token Plan subscription discovery to the selected region host', async () => {
+      mockDecrypt.mockReturnValue('tp-mimo-token');
+      fetcher.fetch.mockResolvedValue([]);
+
+      await service.discoverModels(
+        makeProvider({
+          provider: 'xiaomi',
+          auth_type: 'subscription',
+          api_key_encrypted: 'encrypted',
+          region: 'ams',
+        }),
+      );
+
+      expect(fetcher.fetch).toHaveBeenCalledWith(
+        'xiaomi',
+        'tp-mimo-token',
+        'subscription',
+        'https://token-plan-ams.xiaomimimo.com',
+      );
+    });
+
     it('should fall back to subscription fallback when OpenAI token fetch returns empty', async () => {
       const blob = JSON.stringify({ t: 'expired-token', r: 'refresh', e: Date.now() - 1000 });
       mockDecrypt.mockReturnValue(blob);
@@ -1601,6 +1781,27 @@ describe('ModelDiscoveryService', () => {
         expect(m.authType).toBe('subscription');
       }
       expect(fetcher.fetch).not.toHaveBeenCalled();
+    });
+
+    it('should not hardcode Qwen Token Plan fallback models when subscription fetch returns no models', async () => {
+      mockDecrypt.mockReturnValue('sk-sp-token-plan-key');
+      fetcher.fetch.mockResolvedValue([]);
+
+      const result = await service.discoverModels(
+        makeProvider({
+          provider: 'qwen',
+          auth_type: 'subscription',
+          api_key_encrypted: 'encrypted-token-plan-key',
+        }),
+      );
+
+      expect(fetcher.fetch).toHaveBeenCalledWith(
+        'qwen',
+        'sk-sp-token-plan-key',
+        'subscription',
+        undefined,
+      );
+      expect(result).toEqual([]);
     });
 
     it('should exchange Copilot GitHub token before fetching models', async () => {
@@ -2084,6 +2285,28 @@ describe('ModelDiscoveryService', () => {
       expect(result[0].inputPricePerToken).toBe(0);
     });
 
+    it('should return BytePlus knownModels directly when pricingSync is null', () => {
+      const result = buildSubscriptionFallbackModels(null as never, 'byteplus');
+
+      expect(result.map((m) => m.id)).toEqual([
+        'ark-code-latest',
+        'bytedance-seed-code',
+        'glm-5.1',
+        'glm-4.7',
+        'deepseek-v3.2',
+        'deepseek-v4-flash',
+        'deepseek-v4-pro',
+        'kimi-k2.5',
+        'gpt-oss-120b',
+      ]);
+      expect(result[0]).toMatchObject({
+        provider: 'byteplus',
+        contextWindow: 256000,
+        inputPricePerToken: 0,
+        outputPricePerToken: 0,
+      });
+    });
+
     it('should not duplicate knownModel when already in OpenRouter', () => {
       const orMap = new Map([
         [
@@ -2163,6 +2386,43 @@ describe('ModelDiscoveryService', () => {
         'MiniMax-M2.1-highspeed',
         'MiniMax-M2',
       ]);
+    });
+
+    it('should not build hardcoded Qwen Token Plan fallback models', () => {
+      const orMap = new Map([
+        [
+          'qwen/qwen3.6-plus',
+          {
+            input: 0.0000005,
+            output: 0.000003,
+            contextWindow: 1000000,
+            displayName: 'Qwen 3.6 Plus',
+          },
+        ],
+        [
+          'qwen/qwen3.6-plus-20260402',
+          {
+            input: 0.0000005,
+            output: 0.000003,
+            contextWindow: 1000000,
+            displayName: 'Qwen 3.6 Plus snapshot',
+          },
+        ],
+        [
+          'qwen/qwen-image-2.0',
+          {
+            input: 0,
+            output: 0,
+            contextWindow: 0,
+            displayName: 'Qwen Image 2.0',
+          },
+        ],
+      ]);
+      mockPricingSync.getAll.mockReturnValue(orMap);
+
+      const result = buildSubscriptionFallbackModels(mockPricingSync as never, 'qwen');
+
+      expect(result).toEqual([]);
     });
 
     it('should use exact match mode for gemini — excludes suffixed cache entries', () => {

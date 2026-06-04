@@ -40,6 +40,12 @@ import { CodeIcon } from '../components/playground/icons.jsx';
 import { useRightSidebar } from '../services/right-sidebar.jsx';
 import { agentPath } from '../services/routing.js';
 
+// Route-scoped styles (kept out of the global theme bundle). routing.css is
+// needed here because the shared model picker uses its `routing-modal__*`
+// and capability-badge classes.
+import '../styles/playground.css';
+import '../styles/routing.css';
+
 const REQUEST_HEADERS_STORAGE_KEY = 'manifest.playground.requestHeaders';
 
 function loadStoredHeaders(): HeaderEntry[] {

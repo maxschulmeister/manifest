@@ -1,9 +1,10 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository, In, FindOptionsWhere } from 'typeorm';
 import { UserProvider } from '../../entities/user-provider.entity';
 import { TierAssignment } from '../../entities/tier-assignment.entity';
 import { SpecificityAssignment } from '../../entities/specificity-assignment.entity';
+import { HeaderTier } from '../../entities/header-tier.entity';
 import { ModelPricingCacheService } from '../../model-prices/model-pricing-cache.service';
 import { TierAutoAssignService } from './tier-auto-assign.service';
 import { RoutingCacheService } from './routing-cache.service';
@@ -17,7 +18,10 @@ import { isModelRoute } from 'manifest-shared';
 import type { AuthType, ModelRoute } from 'manifest-shared';
 import { TIER_LABELS } from 'manifest-shared';
 import { detectQwenRegion, isQwenRegion, isQwenResolvedRegion } from '../qwen-region';
-import { isMinimaxRegion } from '../oauth/minimax-oauth-helpers';
+import {
+  getSubscriptionEndpointRegionConfig,
+  SubscriptionEndpointRegionConfig,
+} from '../subscription-region';
 
 const MAX_KEYS_PER_PROVIDER = 5;
 const MAX_LABEL_LENGTH = 50;
@@ -34,6 +38,8 @@ export class ProviderService {
     private readonly tierRepo: Repository<TierAssignment>,
     @InjectRepository(SpecificityAssignment)
     private readonly specificityRepo: Repository<SpecificityAssignment>,
+    @InjectRepository(HeaderTier)
+    private readonly headerTierRepo: Repository<HeaderTier>,
     private readonly autoAssign: TierAutoAssignService,
     private readonly pricingCache: ModelPricingCacheService,
     private readonly routingCache: RoutingCacheService,
@@ -55,6 +61,36 @@ export class ProviderService {
     );
     this.routingCache.setProviders(agentId, providers);
     return providers;
+  }
+
+  /**
+   * Read the freshest persisted subscription credential straight from the DB,
+   * decrypted, bypassing the routing cache. The OAuth refresh coordinator uses
+   * this so a lazy token refresh never rotates based on a stale cached blob
+   * (see issue #2012). Returns the decrypted raw stored value, or null when
+   * there is no row / no stored credential / it cannot be decrypted.
+   */
+  async getFreshSubscriptionCredential(
+    agentId: string,
+    provider: string,
+    label?: string,
+  ): Promise<string | null> {
+    // Match the label case-insensitively, consistent with the rest of the
+    // label handling and the unique index on (agent_id, provider, auth_type,
+    // LOWER(label)). A pinned route may carry a different casing than the
+    // stored row; a case-sensitive lookup would miss it and refresh from the
+    // stale caller blob instead of the freshest DB row.
+    const wantedLabel = (label ?? DEFAULT_LABEL).toLowerCase();
+    const rows = await this.providerRepo.find({
+      where: { agent_id: agentId, provider, auth_type: 'subscription' },
+    });
+    const row = rows.find((r) => r.label.toLowerCase() === wantedLabel);
+    if (!row?.api_key_encrypted) return null;
+    try {
+      return decrypt(row.api_key_encrypted, getEncryptionSecret());
+    } catch {
+      return null;
+    }
   }
 
   async upsertProvider(
@@ -297,19 +333,13 @@ export class ProviderService {
   ): Promise<string | null> {
     const lower = provider.toLowerCase();
 
-    // MiniMax subscription stores region so the proxy can route pasted-token
-    // (sk-cp-) connections to the right base URL. OAuth-issued tokens already
-    // encode the region in the resource_url blob field, but the paste path
-    // has no blob — without this column the proxy falls back to global and
-    // CN tokens 401 against the wrong host.
-    if (lower === 'minimax' && authType === 'subscription') {
-      if (requestedRegion === undefined) {
-        return isMinimaxRegion(existing?.region ?? undefined) ? (existing!.region as string) : null;
-      }
-      if (!isMinimaxRegion(requestedRegion)) {
-        throw new BadRequestException('MiniMax subscription region must be one of: global, cn');
-      }
-      return requestedRegion;
+    const subscriptionRegionConfig = getSubscriptionEndpointRegionConfig(lower, authType);
+    if (subscriptionRegionConfig) {
+      return this.resolveSubscriptionEndpointRegion(
+        subscriptionRegionConfig,
+        requestedRegion,
+        existing,
+      );
     }
 
     const isQwenProvider = lower === 'qwen' || lower === 'alibaba';
@@ -334,6 +364,23 @@ export class ProviderService {
     }
 
     return this.detectQwenRegionOrThrow(keyToProbe);
+  }
+
+  private resolveSubscriptionEndpointRegion(
+    config: SubscriptionEndpointRegionConfig,
+    requestedRegion: string | undefined,
+    existing: UserProvider | null,
+  ): string | null {
+    if (requestedRegion === undefined) {
+      const existingRegion = existing?.region;
+      return typeof existingRegion === 'string' && config.isRegion(existingRegion)
+        ? existingRegion
+        : null;
+    }
+    if (!config.isRegion(requestedRegion)) {
+      throw new BadRequestException(config.validationMessage);
+    }
+    return requestedRegion;
   }
 
   private async getQwenDetectionKey(
@@ -455,12 +502,12 @@ export class ProviderService {
     // Legacy disconnect: deactivate every active key for the (provider,
     // [auth_type]) tuple. Falls back to findOne for compatibility with the
     // already-disconnected case so tier-cleanup still runs.
-    const where: Record<string, unknown> = { agent_id: agentId, provider, is_active: true };
+    const where: FindOptionsWhere<UserProvider> = { agent_id: agentId, provider, is_active: true };
     if (authType) where.auth_type = authType;
     const activeRows = await this.providerRepo.find({ where });
 
     if (activeRows.length === 0) {
-      const fallbackWhere: Record<string, unknown> = { agent_id: agentId, provider };
+      const fallbackWhere: FindOptionsWhere<UserProvider> = { agent_id: agentId, provider };
       if (authType) fallbackWhere.auth_type = authType;
       const any = await this.providerRepo.findOne({ where: fallbackWhere });
       if (!any) throw new NotFoundException('Provider not found');
@@ -522,7 +569,7 @@ export class ProviderService {
     authType: AuthType | undefined,
     label: string,
   ): Promise<{ notifications: string[] }> {
-    const where: Record<string, unknown> = { agent_id: agentId, provider };
+    const where: FindOptionsWhere<UserProvider> = { agent_id: agentId, provider };
     if (authType) where.auth_type = authType;
     const matching = await this.providerRepo.find({ where });
     if (matching.length === 0) throw new NotFoundException('Provider not found');
@@ -558,6 +605,16 @@ export class ProviderService {
       {
         override_route: null,
         auto_assigned_route: null,
+        fallback_routes: null,
+        updated_at: new Date().toISOString(),
+      },
+    );
+    // Custom (header) tiers are user-configured only — clear their routes too
+    // so deactivating every provider doesn't leave stale pins behind.
+    await this.headerTierRepo.update(
+      { agent_id: agentId },
+      {
+        override_route: null,
         fallback_routes: null,
         updated_at: new Date().toISOString(),
       },
@@ -698,6 +755,33 @@ export class ProviderService {
     }
     if (specToSave.length > 0) await this.specificityRepo.save(specToSave);
 
+    // Custom (header) tiers reference the same providers. Drop routes that
+    // belong to the removed provider so they don't linger after a full
+    // disconnect. Header tiers have no auto-assigned slot, so a cleared
+    // override just leaves the tier empty (resolve treats that as fallthrough)
+    // — no notification path, unlike standard tiers above.
+    const headerTiers = await this.headerTierRepo.find({ where: { agent_id: agentId } });
+    const headerTiersToSave: HeaderTier[] = [];
+    for (const h of headerTiers) {
+      let changed = false;
+      if (h.override_route && routeBelongs(h.override_route)) {
+        h.override_route = null;
+        changed = true;
+      }
+      if (h.fallback_routes && h.fallback_routes.length > 0) {
+        const filteredRoutes = h.fallback_routes.filter((route) => !routeBelongs(route));
+        if (filteredRoutes.length !== h.fallback_routes.length) {
+          h.fallback_routes = filteredRoutes.length > 0 ? filteredRoutes : null;
+          changed = true;
+        }
+      }
+      if (changed) {
+        h.updated_at = new Date().toISOString();
+        headerTiersToSave.push(h);
+      }
+    }
+    if (headerTiersToSave.length > 0) await this.headerTierRepo.save(headerTiersToSave);
+
     return { invalidated, hadTierAssignments };
   }
 
@@ -785,6 +869,31 @@ export class ProviderService {
       }
     }
     if (specsToSave.length > 0) await this.specificityRepo.save(specsToSave);
+
+    // Custom (header) tiers carry the same ModelRoute shape. They were
+    // omitted here originally, so disconnecting one account out of several
+    // (or renaming a key) left header-tier routes pinned to a label that no
+    // longer exists — the account chip then renders blank. Relabel them too.
+    const headerTiers = await this.headerTierRepo.find({ where: { agent_id: agentId } });
+    const headerTiersToSave: HeaderTier[] = [];
+    for (const h of headerTiers) {
+      let mutated = false;
+      if (routeMatchesKey(h.override_route)) {
+        h.override_route = replaceKeyLabel(h.override_route!);
+        mutated = true;
+      }
+      if (h.fallback_routes && h.fallback_routes.some(routeMatchesKey)) {
+        h.fallback_routes = h.fallback_routes.map((r) =>
+          routeMatchesKey(r) ? replaceKeyLabel(r) : r,
+        );
+        mutated = true;
+      }
+      if (mutated) {
+        h.updated_at = now;
+        headerTiersToSave.push(h);
+      }
+    }
+    if (headerTiersToSave.length > 0) await this.headerTierRepo.save(headerTiersToSave);
   }
 
   private async renumberPriorities(
