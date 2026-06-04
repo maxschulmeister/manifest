@@ -42,5 +42,5 @@ jobs:
       - name: Merge upstream main into staging
         run: |
           git checkout -B staging origin/staging
-          git merge source/main --no-edit
+          git merge -X theirs source/main --no-edit
           git push origin staging
