@@ -633,6 +633,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
 }
 
 .routing-card__sub {
@@ -1415,6 +1416,7 @@
   gap: 8px;
   flex: 1;
   min-width: 0;
+  width: 100%;
 }
 
 .routing-card__override-icon {
