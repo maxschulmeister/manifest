@@ -14,6 +14,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { AuthUser } from '../auth/auth.instance';
 import { ProviderService } from './routing-core/provider.service';
 import { ResolveAgentService } from './routing-core/resolve-agent.service';
+import type { DiscoveredModel } from '../model-discovery/model-fetcher';
 import { TierService } from './routing-core/tier.service';
 import { ModelDiscoveryService } from '../model-discovery/model-discovery.service';
 import { OllamaSyncService } from '../database/ollama-sync.service';
@@ -23,6 +24,7 @@ import {
   AgentProviderParamDto,
   AgentProviderKeyParamDto,
   ConnectProviderDto,
+  ProviderModelsQueryDto,
   RemoveProviderQueryDto,
   RenameProviderKeyDto,
   ReorderProviderKeysDto,
@@ -85,6 +87,22 @@ export class ProviderController {
       models_fetched_at: p.models_fetched_at ?? null,
       cached_model_count: Array.isArray(p.cached_models) ? p.cached_models.length : 0,
     }));
+  }
+
+  @Get(':agentName/providers/:provider/models')
+  async getProviderModels(
+    @CurrentUser() user: AuthUser,
+    @Param() params: AgentProviderParamDto,
+    @Query() query: ProviderModelsQueryDto,
+  ) {
+    const agent = await this.resolveAgentService.resolve(user.id, params.agentName);
+    const providers = await this.providerService.getProviders(agent.id);
+    const row = providers.find(
+      (p) =>
+        p.provider === params.provider && p.auth_type === query.authType && p.is_active === true,
+    );
+    if (!row) throw new BadRequestException('Provider connection not found');
+    return this.mapProviderModels(row.cached_models, row.provider, row.auth_type);
   }
 
   @Post(':agentName/providers')
@@ -222,5 +240,27 @@ export class ProviderController {
       query.label,
     );
     return { ok: true, notifications };
+  }
+
+  private mapProviderModels(
+    models: DiscoveredModel[] | null | undefined,
+    provider: string,
+    authType: 'api_key' | 'subscription' | 'local',
+  ) {
+    return (Array.isArray(models) ? models : []).map((m) => ({
+      model_name: m.id,
+      display_name: m.displayName || m.id,
+      provider,
+      auth_type: m.authType ?? authType,
+      context_window: m.contextWindow ?? null,
+      input_price_per_token: m.inputPricePerToken ?? null,
+      output_price_per_token: m.outputPricePerToken ?? null,
+      capability_reasoning: !!m.capabilityReasoning,
+      capability_code: !!m.capabilityCode,
+      quality_score: m.qualityScore ?? null,
+      capabilities: m.capabilities ?? [],
+      input_modalities: m.inputModalities ?? [],
+      output_modalities: m.outputModalities ?? [],
+    }));
   }
 }

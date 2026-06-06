@@ -20,6 +20,9 @@ import {
   providersUrlIndicatesSubView,
   resolveProvidersSubViewLabel,
 } from '../services/routing-params.js';
+// Route-scoped: Providers shares the routing provider UI stylesheet, but keep
+// it out of the global theme bundle for unrelated pages.
+import '../styles/routing.css';
 
 const Providers: Component = () => {
   const params = useParams<{ agentName: string }>();

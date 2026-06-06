@@ -153,6 +153,11 @@ export class RenameProviderKeyDto {
   authType?: 'api_key' | 'subscription';
 }
 
+export class ProviderModelsQueryDto {
+  @IsIn(AUTH_TYPES)
+  authType!: 'api_key' | 'subscription' | 'local';
+}
+
 export class ReorderProviderKeysDto {
   @IsArray()
   @ArrayMinSize(1)

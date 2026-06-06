@@ -406,6 +406,116 @@
   animation: provider-detail-refresh-spin 0.9s linear infinite;
 }
 
+.provider-detail__section {
+  margin-bottom: 16px;
+}
+
+.provider-model-table {
+  --provider-model-grid: minmax(0, 1fr) minmax(110px, 150px) minmax(110px, 150px);
+  max-height: 50vh;
+  margin-bottom: 14px;
+  overflow: auto;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  background: hsl(var(--card));
+}
+
+.provider-model-table__head,
+.provider-model-table__row {
+  display: grid;
+  grid-template-columns: var(--provider-model-grid);
+  align-items: center;
+  gap: 12px;
+}
+
+.provider-model-table__head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 8px 14px;
+  border-bottom: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
+  color: hsl(var(--muted-foreground));
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.provider-model-table__head > span:nth-child(2),
+.provider-model-table__head > span:nth-child(3) {
+  justify-self: end;
+  text-align: right;
+}
+
+.provider-model-table__row {
+  min-height: 48px;
+  padding: 9px 14px;
+  border-top: 1px solid hsl(var(--border) / 0.5);
+}
+
+.provider-model-table__head + .provider-model-table__row,
+.provider-model-table__row:first-child {
+  border-top: none;
+}
+
+.provider-model-table__model {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+
+.provider-model-table__label {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  color: hsl(var(--foreground));
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.provider-model-table__id {
+  display: block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: hsl(var(--muted-foreground));
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
+}
+
+.provider-model-table__cell {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.provider-model-table__price {
+  color: hsl(var(--muted-foreground));
+  font-family: var(--font-mono, monospace);
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.provider-model-table__mobile-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 @keyframes provider-detail-refresh-spin {
   to {
     transform: rotate(360deg);
