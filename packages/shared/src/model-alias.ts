@@ -34,10 +34,12 @@ export function getStaticModelAliases(): readonly string[] {
 export function customTierNameToModelAlias(name: string): string {
   return name
     .trim()
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
     .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
+    .replace(/[^a-z0-9.]+/g, '-')
+    .replace(/\.{2,}/g, '.')
+    .replace(/^[.-]+|[.-]+$/g, '');
 }
 
 /** Backwards-compatible name for callers that want the static routing aliases. */
