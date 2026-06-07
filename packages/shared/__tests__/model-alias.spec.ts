@@ -89,6 +89,7 @@ describe('customTierNameToModelAlias', () => {
   it('derives a lowercase kebab-case model alias from the tier name', () => {
     expect(customTierNameToModelAlias('Premium Fast')).toBe('premium-fast');
     expect(customTierNameToModelAlias('PremiumFast Lane')).toBe('premium-fast-lane');
+    expect(customTierNameToModelAlias('GPT 5.5 XHigh')).toBe('gpt-5.5-x-high');
     expect(customTierNameToModelAlias('Data/API Tier')).toBe('data-api-tier');
   });
 
