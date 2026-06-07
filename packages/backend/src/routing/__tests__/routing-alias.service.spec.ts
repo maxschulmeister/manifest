@@ -48,7 +48,7 @@ describe('RoutingAliasService', () => {
     headerTierService.list.mockResolvedValue([
       {
         id: 'ht-fast',
-        name: 'Fast',
+        name: 'FastTier',
         enabled: true,
         override_route: { provider: 'openai', authType: 'api_key', model: 'gpt-4o' },
       },
@@ -65,7 +65,7 @@ describe('RoutingAliasService', () => {
       'auto',
       'simple',
       'web-browsing',
-      'fast',
+      'fast-tier',
     ]);
   });
 
@@ -80,9 +80,9 @@ describe('RoutingAliasService', () => {
     });
   });
 
-  it('classifies enabled custom tiers by name-derived slug', async () => {
+  it('classifies enabled custom tiers by kebab-case names', async () => {
     headerTierService.list.mockResolvedValue([
-      { id: 'ht-fast', name: 'Fast Lane', enabled: true, override_route: null },
+      { id: 'ht-fast', name: 'FastLane', enabled: true, override_route: null },
     ] as never);
 
     await expect(svc.classifyModel('agent-1', 'fast-lane')).resolves.toEqual({

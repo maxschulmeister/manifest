@@ -331,6 +331,9 @@ export class HeaderTierService {
     if (name.length > MAX_NAME_LEN) {
       throw new BadRequestException(`Name must be ${MAX_NAME_LEN} characters or fewer`);
     }
+    if (name.includes('/')) {
+      throw new BadRequestException('Name must not contain /');
+    }
     return name;
   }
 

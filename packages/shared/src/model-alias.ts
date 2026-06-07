@@ -34,6 +34,7 @@ export function getStaticModelAliases(): readonly string[] {
 export function customTierNameToModelAlias(name: string): string {
   return name
     .trim()
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');

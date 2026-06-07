@@ -195,6 +195,12 @@ describe('HeaderTierService', () => {
       ).rejects.toThrow(/model alias is reserved/);
     });
 
+    it('rejects names that contain a slash', async () => {
+      await expect(
+        svc.create('agent-1', 'user-1', null, validInput({ name: 'Premium/Fast' })),
+      ).rejects.toThrow(/must not contain/);
+    });
+
     it('rejects names that derive to the same model alias', async () => {
       repo.find.mockResolvedValue([
         {
@@ -206,7 +212,7 @@ describe('HeaderTierService', () => {
         } as HeaderTier,
       ]);
       await expect(
-        svc.create('agent-1', 'user-1', null, validInput({ name: 'Premium/Fast' })),
+        svc.create('agent-1', 'user-1', null, validInput({ name: 'PremiumFast' })),
       ).rejects.toThrow(/model alias already exists/);
     });
 

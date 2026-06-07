@@ -88,11 +88,13 @@ describe('classifyModelAlias', () => {
 describe('customTierNameToModelAlias', () => {
   it('derives a lowercase kebab-case model alias from the tier name', () => {
     expect(customTierNameToModelAlias('Premium Fast')).toBe('premium-fast');
+    expect(customTierNameToModelAlias('PremiumFast Lane')).toBe('premium-fast-lane');
     expect(customTierNameToModelAlias('Data/API Tier')).toBe('data-api-tier');
   });
 
-  it('trims repeated separators', () => {
+  it('trims repeated separators and unsafe characters', () => {
     expect(customTierNameToModelAlias('  Premium---Fast!!  ')).toBe('premium-fast');
+    expect(customTierNameToModelAlias('Premium @ Home!')).toBe('premium-home');
   });
 });
 
