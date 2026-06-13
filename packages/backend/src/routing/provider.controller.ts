@@ -28,7 +28,7 @@ import {
   ReorderProviderKeysDto,
 } from './dto/routing.dto';
 import { isQwenRegion } from './qwen-region';
-import { isMinimaxRegion } from './oauth/minimax-oauth-helpers';
+import { getSubscriptionEndpointRegionConfig } from './subscription-region';
 
 @Controller('api/v1/routing')
 export class ProviderController {
@@ -96,20 +96,23 @@ export class ProviderController {
     const agent = await this.resolveAgentService.resolve(user.id, params.agentName);
     const lowerProvider = body.provider.toLowerCase();
     const isQwenProvider = lowerProvider === 'qwen' || lowerProvider === 'alibaba';
-    const isMinimaxSubscription = lowerProvider === 'minimax' && body.authType === 'subscription';
+    const subscriptionRegionConfig = getSubscriptionEndpointRegionConfig(
+      lowerProvider,
+      body.authType,
+    );
 
     if (body.region !== undefined) {
       if (isQwenProvider) {
         if (!isQwenRegion(body.region)) {
           throw new BadRequestException('region must be one of: auto, singapore, us, beijing');
         }
-      } else if (isMinimaxSubscription) {
-        if (!isMinimaxRegion(body.region)) {
-          throw new BadRequestException('MiniMax subscription region must be one of: global, cn');
+      } else if (subscriptionRegionConfig) {
+        if (!subscriptionRegionConfig.isRegion(body.region)) {
+          throw new BadRequestException(subscriptionRegionConfig.validationMessage);
         }
       } else {
         throw new BadRequestException(
-          'region is only supported for Alibaba/Qwen providers and MiniMax subscriptions',
+          'region is only supported for Alibaba/Qwen providers, MiniMax subscriptions, Xiaomi MiMo Token Plan, and Z.ai subscriptions',
         );
       }
     }

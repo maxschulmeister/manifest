@@ -545,6 +545,44 @@ describe('Anthropic Messages adapter', () => {
         cache_read_input_tokens: 0,
       });
     });
+
+    it('skips nullish text/tool blocks without dropping valid sibling blocks', () => {
+      // Defensive: an upstream provider could send a content array where some
+      // blocks have `text: null` or a tool_call where `id`/`function.arguments`
+      // are null. These must not cause valid sibling blocks to be lost or the
+      // converter to crash.
+      const result = chatCompletionsResponseToMessages(
+        {
+          choices: [
+            {
+              message: {
+                content: [
+                  { type: 'text', text: null },
+                  { type: 'text', text: 'real text' },
+                ],
+                tool_calls: [
+                  { id: null, function: { name: 'tn', arguments: null } },
+                  { id: 'tc_ok', function: { name: 'ok', arguments: '{"a":1}' } },
+                ],
+              },
+              finish_reason: 'tool_calls',
+            },
+          ],
+        },
+        'fallback',
+      );
+
+      // text block: null text contributes nothing; "real text" survives.
+      expect(result.content).toEqual([
+        { type: 'text', text: 'real text' },
+        // tool_call with null id gets a synthesized toolu_* id; null arguments
+        // resolve via safeParseJson(undefined) → {} (no crash).
+        expect.objectContaining({ type: 'tool_use', name: 'tn', input: {} }),
+        { type: 'tool_use', id: 'tc_ok', name: 'ok', input: { a: 1 } },
+      ]);
+      const synthesized = (result.content as Array<Record<string, unknown>>)[1];
+      expect(synthesized.id).toMatch(/^toolu_[0-9a-f]{32}$/);
+    });
   });
 
   describe('createMessagesStreamTransformer', () => {
@@ -601,6 +639,48 @@ describe('Anthropic Messages adapter', () => {
         cache_creation_input_tokens: 0,
         cache_read_input_tokens: 0,
       });
+    });
+
+    it('surfaces upstream error chunks as a terminal Anthropic error event (issue #2212)', () => {
+      const t = createMessagesStreamTransformer('gpt-5');
+      const sse = flushChunks(t, [
+        'data: {"error":{"message":"Too many requests","type":"upstream_error","status":429,"code":"rate_limit_exceeded"}}\n\ndata: [DONE]\n\n',
+      ]);
+
+      expect(sse).toBe(
+        'event: error\ndata: {"type":"error","error":{"type":"rate_limit_error","message":"Too many requests"}}\n\n',
+      );
+      // No fabricated message_start / message_delta / message_stop around the error.
+      expect(sse).not.toContain('message_start');
+      expect(sse).not.toContain('message_stop');
+    });
+
+    it('ignores later stream payloads after a terminal error event', () => {
+      const t = createMessagesStreamTransformer('gpt-5');
+      const sse = flushChunks(t, [
+        'data: {"error":{"message":"Too many requests","status":429}}\n\ndata: {"choices":[{"delta":{"content":"same chunk"}}]}\n\n',
+        'data: {"choices":[{"delta":{"content":"later chunk"}}]}\n\n',
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+      ]);
+
+      expect(sse).toBe(
+        'event: error\ndata: {"type":"error","error":{"type":"rate_limit_error","message":"Too many requests"}}\n\n',
+      );
+    });
+
+    it('emits an error event mid-stream and suppresses the fabricated end_turn close', () => {
+      const t = createMessagesStreamTransformer('gpt-5');
+      const sse = flushChunks(t, [
+        'data: {"choices":[{"delta":{"content":"Hel"}}]}\n\n',
+        'data: {"error":{}}\n\ndata: [DONE]\n\n',
+      ]);
+
+      expect(sse).toContain('event: message_start');
+      expect(sse).toContain(
+        'event: error\ndata: {"type":"error","error":{"type":"api_error","message":"Upstream provider stream failed"}}',
+      );
+      expect(sse).not.toContain('"stop_reason":"end_turn"');
+      expect(sse).not.toContain('message_stop');
     });
 
     it('emits tool_use content_block_start and input_json_delta for tool calls', () => {
@@ -1001,6 +1081,91 @@ describe('Anthropic Messages adapter', () => {
       const out = t.transform('{"choices":[{"delta":{"content":"raw"}}]}');
       expect(out).toContain('event: message_start');
       expect(out).toContain('"text":"raw"');
+    });
+
+    it('treats sequential zero-length deltas as no-ops and only opens a block on the first real content', () => {
+      // Realistic heartbeat / status pattern: providers can send several deltas
+      // with empty `reasoning_content`/`content` strings before any real text
+      // arrives. Empty deltas must not open blocks, consume block indices, or
+      // otherwise mutate state — so when "hello" finally lands, it opens
+      // text@0 (not text@2 or higher) and the stream stays valid.
+      const t = createMessagesStreamTransformer('m');
+      const sse = flushChunks(t, [
+        'data: {"choices":[{"delta":{"reasoning_content":""}}]}\n\n',
+        'data: {"choices":[{"delta":{"content":""}}]}\n\n',
+        'data: {"choices":[{"delta":{"reasoning_content":""}}]}\n\n',
+        'data: {"choices":[{"delta":{"content":"hello"}}]}\n\n',
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+      ]);
+
+      const events = sse
+        .split('\n\n')
+        .filter(Boolean)
+        .map((block) => {
+          const [eventLine, dataLine] = block.split('\n');
+          return {
+            event: eventLine!.replace('event: ', ''),
+            data: JSON.parse(dataLine!.replace('data: ', '')),
+          };
+        });
+
+      // No thinking block was ever opened (all reasoning_content was empty),
+      // and exactly one text block opens at the first non-empty content.
+      expect(events.map((e) => e.event)).toEqual([
+        'message_start',
+        'content_block_start',
+        'content_block_delta',
+        'content_block_stop',
+        'message_delta',
+        'message_stop',
+      ]);
+      expect(events[1].data).toEqual({
+        type: 'content_block_start',
+        index: 0,
+        content_block: { type: 'text', text: '' },
+      });
+      expect(events[2].data).toEqual({
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'text_delta', text: 'hello' },
+      });
+    });
+
+    it('finalize closes an incomplete tool_use block opened mid-stream', () => {
+      // The stream opens a tool_use and emits a partial input_json_delta, then
+      // the upstream cuts off (no finish_reason, no second arg chunk, no usage).
+      // finalize() must emit the matching content_block_stop for the open
+      // tool_use plus the terminal message_delta / message_stop so clients
+      // don't hang on an orphan content_block_start.
+      const t = createMessagesStreamTransformer('m');
+      const opened = t.transform(
+        'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"tc_partial","function":{"name":"search","arguments":"{\\"arg\\""}}]}}]}\n\n',
+      );
+      expect(opened).toContain('"content_block":{"type":"tool_use"');
+      expect(opened).toContain('"partial_json":"{\\"arg\\""');
+
+      const tail = t.finalize();
+      expect(tail).not.toBeNull();
+      const events = tail!
+        .split('\n\n')
+        .filter(Boolean)
+        .map((block) => {
+          const [eventLine, dataLine] = block.split('\n');
+          return {
+            event: eventLine!.replace('event: ', ''),
+            data: JSON.parse(dataLine!.replace('data: ', '')),
+          };
+        });
+
+      expect(events.map((e) => e.event)).toEqual([
+        'content_block_stop',
+        'message_delta',
+        'message_stop',
+      ]);
+      // Stop must reference the tool_use's index (0, the first/only block).
+      expect(events[0].data).toEqual({ type: 'content_block_stop', index: 0 });
+      // No finish_reason was ever seen, so stop_reason defaults to end_turn.
+      expect(events[1].data.delta.stop_reason).toBe('end_turn');
     });
   });
 });

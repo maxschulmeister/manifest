@@ -1,4 +1,4 @@
-import { DiscoveredModel } from './model-fetcher';
+import { DiscoveredModel, DEFAULT_CONTEXT_WINDOW } from './model-fetcher';
 import {
   OPENROUTER_PREFIX_TO_PROVIDER,
   PROVIDER_BY_ID_OR_ALIAS,
@@ -6,6 +6,7 @@ import {
 import {
   getSubscriptionKnownModels,
   getSubscriptionKnownModelsMatch,
+  getSubscriptionExcludedModels,
   getSubscriptionCapabilities,
 } from 'manifest-shared';
 import { normalizeAnthropicShortModelId } from '../common/utils/anthropic-model-id';
@@ -160,7 +161,7 @@ export function buildModelsDevFallback(
     id: e.id,
     displayName: e.name || e.id,
     provider: providerId,
-    contextWindow: e.contextWindow ?? 128000,
+    contextWindow: e.contextWindow ?? DEFAULT_CONTEXT_WINDOW,
     inputPricePerToken: e.inputPricePerToken,
     outputPricePerToken: e.outputPricePerToken,
     capabilityReasoning: e.reasoning ?? false,
@@ -206,7 +207,7 @@ export function buildFallbackModels(
       id: modelId,
       displayName: entry.displayName || modelId,
       provider: providerId,
-      contextWindow: entry.contextWindow ?? 128000,
+      contextWindow: entry.contextWindow ?? DEFAULT_CONTEXT_WINDOW,
       inputPricePerToken: entry.input,
       outputPricePerToken: entry.output,
       capabilityReasoning: false,
@@ -232,6 +233,9 @@ export function buildSubscriptionFallbackModels(
   if (!knownPrefixes) return [];
   const normalizedKnownPrefixes = knownPrefixes.map((modelId) => modelId.toLowerCase());
   const matchMode = getSubscriptionKnownModelsMatch(providerId);
+  const excludedSubstrings = getSubscriptionExcludedModels(providerId).map((s) => s.toLowerCase());
+  const isExcluded = (lowerId: string): boolean =>
+    excludedSubstrings.some((sub) => lowerId.includes(sub));
 
   const capabilities = getSubscriptionCapabilities(providerId);
   const models: DiscoveredModel[] = [];
@@ -249,10 +253,13 @@ export function buildSubscriptionFallbackModels(
           ? normalizedKnownPrefixes.includes(lowerId)
           : normalizedKnownPrefixes.some((p: string) => lowerId.startsWith(p));
       if (!matches) continue;
+      // Drop pricing-cache pseudo-models (e.g. Anthropic `claude-*-fast`) that
+      // match a known prefix but 404 at the subscription endpoint.
+      if (isExcluded(lowerId)) continue;
       if (seen.has(modelId)) continue;
       seen.add(modelId);
 
-      let contextWindow = entry.contextWindow ?? 128000;
+      let contextWindow = entry.contextWindow ?? DEFAULT_CONTEXT_WINDOW;
       if (capabilities?.maxContextWindow && contextWindow > capabilities.maxContextWindow) {
         contextWindow = capabilities.maxContextWindow;
       }

@@ -1,5 +1,6 @@
 import { ProviderClient } from '../provider-client';
 import { buildCustomEndpoint } from '../provider-endpoints';
+import type { ProviderModelRegistryService } from '../../../model-discovery/provider-model-registry.service';
 
 const mockFetch = jest.fn();
 (globalThis as unknown as { fetch: typeof fetch }).fetch = mockFetch;
@@ -45,6 +46,36 @@ describe('ProviderClient', () => {
       expect(sentBody.stream).toBe(false);
       expect(sentBody.temperature).toBe(0.7);
       expect(result.isAnthropic).toBe(false);
+    });
+
+    it('preserves image parts for OpenAI-compatible providers', async () => {
+      mockFetch.mockResolvedValue(new Response('{}', { status: 200 }));
+      const imageBody = {
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Describe this.' },
+              {
+                type: 'image_url',
+                image_url: { url: 'data:image/png;base64,iVBORw0KGgo=' },
+              },
+            ],
+          },
+        ],
+      };
+
+      await client.forward({
+        provider: 'openai',
+        apiKey: 'sk-test',
+        model: 'gpt-4o',
+        body: imageBody,
+        stream: false,
+      });
+
+      const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(sentBody.messages).toEqual(imageBody.messages);
+      expect(sentBody.model).toBe('gpt-4o');
     });
 
     it('builds correct URL for deepseek', async () => {
@@ -136,6 +167,30 @@ describe('ProviderClient', () => {
         'https://api.x.ai/v1/chat/completions',
         expect.any(Object),
       );
+    });
+
+    it('builds correct URL for xiaomi', async () => {
+      mockFetch.mockResolvedValue(new Response('{}', { status: 200 }));
+      await client.forward({
+        provider: 'xiaomi',
+        apiKey: 'sk-mimo-test',
+        model: 'mimo-v2.5-pro',
+        body,
+        stream: false,
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://api.xiaomimimo.com/v1/chat/completions',
+        expect.objectContaining({
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer sk-mimo-test',
+            'Content-Type': 'application/json',
+          },
+        }),
+      );
+      const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(sentBody.model).toBe('mimo-v2.5-pro');
     });
 
     it('routes public Responses API requests for xAI to /v1/responses', async () => {
@@ -403,6 +458,52 @@ describe('ProviderClient', () => {
       expect(sent.tools[0]).toMatchObject({ name: 'lookup', input_schema: { type: 'object' } });
     });
 
+    it('forwards Responses image inputs to Anthropic image content blocks', async () => {
+      mockFetch.mockResolvedValue(new Response('{}', { status: 200 }));
+
+      await client.forward({
+        provider: 'anthropic',
+        apiKey: 'sk-ant-test',
+        model: 'claude-sonnet-4-5-20250929',
+        body: {
+          input: [
+            {
+              role: 'user',
+              content: [
+                { type: 'input_text', text: 'What is in this image?' },
+                { type: 'input_image', image_url: 'data:image/png;base64,iVBORw0KGgo=' },
+              ],
+            },
+          ],
+          stream: false,
+        },
+        chatBody: {
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: 'What is in this image?' },
+                { type: 'image_url', image_url: { url: 'data:image/png;base64,iVBORw0KGgo=' } },
+              ],
+            },
+          ],
+          stream: false,
+        },
+        stream: false,
+        apiMode: 'responses',
+      });
+
+      const sent = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(sent.input).toBeUndefined();
+      expect(sent.messages[0].content).toEqual([
+        { type: 'text', text: 'What is in this image?' },
+        {
+          type: 'image',
+          source: { type: 'base64', media_type: 'image/png', data: 'iVBORw0KGgo=' },
+        },
+      ]);
+    });
+
     it('strips Codex-unsupported params on the subscription Responses path', async () => {
       mockFetch.mockResolvedValue(new Response('{}', { status: 200 }));
 
@@ -586,7 +687,7 @@ describe('ProviderClient', () => {
       expect(sentBody.stream).toBeUndefined();
     });
 
-    it('omits cache_control from request body for subscription auth', async () => {
+    it('injects cache_control breakpoints for subscription auth', async () => {
       mockFetch.mockResolvedValue(new Response('{}', { status: 200 }));
 
       const bodyWithSystem = {
@@ -612,10 +713,12 @@ describe('ProviderClient', () => {
       // First system block is the subscription identity prompt
       expect(system[0].text).toContain('Claude agent');
       expect(system[0].cache_control).toEqual({ type: 'ephemeral' });
-      // User system block has no cache_control (subscription skips caching)
-      expect(system[1].cache_control).toBeUndefined();
+      // The OAuth API accepts cache_control (the #1193 400s were caused by the
+      // missing identity block, not caching), so subscription auth gets the
+      // same breakpoints as API-key auth.
+      expect(system[1].cache_control).toEqual({ type: 'ephemeral' });
       const tools = sentBody.tools as Array<{ cache_control?: unknown }>;
-      expect(tools[0].cache_control).toBeUndefined();
+      expect(tools[0].cache_control).toEqual({ type: 'ephemeral' });
     });
 
     it('includes block-level cache_control for regular Anthropic API key auth', async () => {
@@ -700,6 +803,37 @@ describe('ProviderClient', () => {
       // Should not have OpenAI-style fields
       expect(sentBody.model).toBeUndefined();
       expect(sentBody.stream).toBeUndefined();
+    });
+
+    it('maps image parts onto the Google request body', async () => {
+      mockFetch.mockResolvedValue(new Response('{}', { status: 200 }));
+
+      await client.forward({
+        provider: 'google',
+        apiKey: 'AIza-test',
+        model: 'gemini-2.0-flash',
+        body: {
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: 'Describe this.' },
+                {
+                  type: 'image_url',
+                  image_url: { url: 'data:image/png;base64,iVBORw0KGgo=' },
+                },
+              ],
+            },
+          ],
+        },
+        stream: false,
+      });
+
+      const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(sentBody.contents[0].parts).toEqual([
+        { text: 'Describe this.' },
+        { inlineData: { mimeType: 'image/png', data: 'iVBORw0KGgo=' } },
+      ]);
     });
   });
 
@@ -868,21 +1002,26 @@ describe('ProviderClient', () => {
       expect(result.isChatGpt).toBe(true);
     });
 
-    it('routes api_key + o4-mini-deep-research to /v1/responses', async () => {
-      mockFetch.mockResolvedValue(new Response('{}', { status: 200 }));
+    it.each(['o3-deep-research', 'o4-mini-deep-research'])(
+      'routes already-resolved api_key + %s to /v1/responses',
+      async (model) => {
+        mockFetch.mockResolvedValue(new Response('{}', { status: 200 }));
 
-      const result = await client.forward({
-        provider: 'openai',
-        apiKey: 'sk-test',
-        model: 'o4-mini-deep-research',
-        body,
-        stream: false,
-      });
+        const result = await client.forward({
+          provider: 'openai',
+          apiKey: 'sk-test',
+          model,
+          body,
+          stream: false,
+        });
 
-      const url = mockFetch.mock.calls[0][0] as string;
-      expect(url).toBe('https://api.openai.com/v1/responses');
-      expect(result.isChatGpt).toBe(true);
-    });
+        const url = mockFetch.mock.calls[0][0] as string;
+        expect(url).toBe('https://api.openai.com/v1/responses');
+        const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+        expect(sentBody.stream).toBe(false);
+        expect(result.isChatGpt).toBe(true);
+      },
+    );
 
     it('detects Responses-only models after stripping an OpenRouter-style vendor prefix', async () => {
       mockFetch.mockResolvedValue(new Response('{}', { status: 200 }));
@@ -901,6 +1040,24 @@ describe('ProviderClient', () => {
       const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body);
       // Vendor prefix is stripped before being sent to OpenAI.
       expect(sentBody.model).toBe('gpt-5.3-codex');
+    });
+
+    it('detects already-resolved o3-deep-research after stripping an OpenRouter-style vendor prefix', async () => {
+      mockFetch.mockResolvedValue(new Response('{}', { status: 200 }));
+
+      await client.forward({
+        provider: 'openai',
+        apiKey: 'sk-test',
+        model: 'openai/o3-deep-research',
+        body,
+        stream: false,
+      });
+
+      const url = mockFetch.mock.calls[0][0] as string;
+      expect(url).toBe('https://api.openai.com/v1/responses');
+
+      const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(sentBody.model).toBe('o3-deep-research');
     });
 
     // Regression guard: models that DO support /v1/chat/completions must stay
@@ -1004,6 +1161,16 @@ describe('ProviderClient', () => {
       'gpt-5.3-codex',
       'gpt-5.1-codex-mini',
     ];
+    const createClientWithCopilotMetadata = (models: Record<string, readonly string[]>) => {
+      const registry: Pick<ProviderModelRegistryService, 'getModelMetadata'> = {
+        getModelMetadata: jest.fn((provider: string, model: string) => {
+          if (provider !== 'copilot') return null;
+          const endpoints = models[model.toLowerCase()];
+          return endpoints ? { id: model.toLowerCase(), supportedEndpoints: endpoints } : null;
+        }),
+      };
+      return new ProviderClient(undefined, registry as unknown as ProviderModelRegistryService);
+    };
 
     it.each(copilotResponsesOnlyModels)(
       'routes Copilot + Codex model %s to /responses with chatgpt format',
@@ -1037,6 +1204,119 @@ describe('ProviderClient', () => {
         expect(sentBody.model).toBe(model);
       },
     );
+
+    it('routes Copilot chat input to /responses when supported_endpoints excludes chat', async () => {
+      mockFetch.mockResolvedValue(new Response('{}', { status: 200 }));
+      const metadataClient = createClientWithCopilotMetadata({
+        'copilot/gpt-5.5': ['/responses', 'ws:/responses'],
+      });
+
+      const result = await metadataClient.forward({
+        provider: 'copilot',
+        apiKey: 'tid=abc',
+        model: 'gpt-5.5',
+        body,
+        stream: false,
+      });
+
+      const url = mockFetch.mock.calls[0][0] as string;
+      expect(url).toBe('https://api.githubcopilot.com/responses');
+      expect(result.isChatGpt).toBe(true);
+
+      const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(Array.isArray(sentBody.input)).toBe(true);
+      expect(sentBody.messages).toBeUndefined();
+      expect(sentBody.model).toBe('gpt-5.5');
+    });
+
+    it('keeps Copilot chat input on /chat/completions when chat is supported', async () => {
+      mockFetch.mockResolvedValue(new Response('{}', { status: 200 }));
+      const metadataClient = createClientWithCopilotMetadata({
+        'copilot/gpt-5.4': ['/responses', '/chat/completions', 'ws:/responses'],
+      });
+
+      const result = await metadataClient.forward({
+        provider: 'copilot',
+        apiKey: 'tid=abc',
+        model: 'gpt-5.4',
+        body,
+        stream: false,
+      });
+
+      const url = mockFetch.mock.calls[0][0] as string;
+      expect(url).toBe('https://api.githubcopilot.com/chat/completions');
+      expect(result.isChatGpt).toBe(false);
+
+      const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(sentBody.messages).toBeDefined();
+      expect(sentBody.input).toBeUndefined();
+    });
+
+    it('routes Copilot Responses input to /responses when supported', async () => {
+      mockFetch.mockResolvedValue(new Response('{}', { status: 200 }));
+      const metadataClient = createClientWithCopilotMetadata({
+        'copilot/gpt-5.4': ['/responses', '/chat/completions'],
+      });
+
+      const result = await metadataClient.forward({
+        provider: 'copilot',
+        apiKey: 'tid=abc',
+        model: 'gpt-5.4',
+        body: { input: 'Hello', stream: false },
+        chatBody: { messages: [{ role: 'user', content: 'Hello' }], stream: false },
+        stream: false,
+        apiMode: 'responses',
+      });
+
+      const url = mockFetch.mock.calls[0][0] as string;
+      expect(url).toBe('https://api.githubcopilot.com/responses');
+      expect(result.isResponses).toBe(true);
+    });
+
+    it('routes Copilot Responses input to /chat/completions when only chat is supported', async () => {
+      mockFetch.mockResolvedValue(new Response('{}', { status: 200 }));
+      const metadataClient = createClientWithCopilotMetadata({
+        'copilot/claude-sonnet-4.6': ['/chat/completions', '/v1/messages'],
+      });
+
+      const result = await metadataClient.forward({
+        provider: 'copilot',
+        apiKey: 'tid=abc',
+        model: 'claude-sonnet-4.6',
+        body: { input: 'Hello', stream: false },
+        chatBody: { messages: [{ role: 'user', content: 'Hello' }], stream: false },
+        stream: false,
+        apiMode: 'responses',
+      });
+
+      const url = mockFetch.mock.calls[0][0] as string;
+      expect(url).toBe('https://api.githubcopilot.com/chat/completions');
+      expect(result.isChatGpt).toBe(false);
+
+      const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(sentBody.messages).toBeDefined();
+      expect(sentBody.input).toBeUndefined();
+    });
+
+    it('preserves reasoning and text params when converting Copilot Codex requests', async () => {
+      mockFetch.mockResolvedValue(new Response('{}', { status: 200 }));
+
+      await client.forward({
+        provider: 'copilot',
+        apiKey: 'tid=abc',
+        model: 'gpt-5.2-codex',
+        body: {
+          messages: [{ role: 'user', content: 'Hello' }],
+          reasoning: { effort: 'high', summary: 'concise' },
+          text: { verbosity: 'low' },
+        },
+        stream: false,
+      });
+
+      const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(sentBody.reasoning).toEqual({ effort: 'high', summary: 'concise' });
+      expect(sentBody.text).toEqual({ verbosity: 'low' });
+    });
 
     it('leaves non-Codex Copilot models on /chat/completions', async () => {
       mockFetch.mockResolvedValue(new Response('{}', { status: 200 }));
@@ -1155,7 +1435,7 @@ describe('ProviderClient', () => {
       });
 
       const url = mockFetch.mock.calls[0][0] as string;
-      expect(url).toBe('https://open.bigmodel.cn/api/coding/paas/v4/chat/completions');
+      expect(url).toBe('https://api.z.ai/api/coding/paas/v4/chat/completions');
 
       const headers = mockFetch.mock.calls[0][1].headers;
       expect(headers['Authorization']).toBe('Bearer zai-sub-key');
@@ -1223,6 +1503,114 @@ describe('ProviderClient', () => {
 
       const url = mockFetch.mock.calls[0][0] as string;
       expect(url).toBe('https://api.moonshot.ai/v1/chat/completions');
+    });
+  });
+
+  describe('Qwen Token Plan subscription provider', () => {
+    it('routes Qwen subscription auth to the Token Plan chat endpoint', async () => {
+      mockFetch.mockResolvedValue(new Response('{}', { status: 200 }));
+
+      await client.forward({
+        provider: 'qwen',
+        apiKey: 'sk-sp-token-plan-key',
+        model: 'qwen3.6-plus',
+        body,
+        stream: false,
+        authType: 'subscription',
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/chat/completions',
+        expect.objectContaining({
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer sk-sp-token-plan-key',
+            'Content-Type': 'application/json',
+          },
+        }),
+      );
+      const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(sentBody.model).toBe('qwen3.6-plus');
+    });
+
+    it('routes qwen3.7-max through the Token Plan Responses endpoint', async () => {
+      mockFetch.mockResolvedValue(new Response('{}', { status: 200 }));
+
+      const result = await client.forward({
+        provider: 'qwen',
+        apiKey: 'sk-sp-token-plan-key',
+        model: 'qwen3.7-max',
+        body,
+        stream: false,
+        authType: 'subscription',
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/responses',
+        expect.any(Object),
+      );
+      const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(sentBody.model).toBe('qwen3.7-max');
+      expect(sentBody.input).toBeDefined();
+      expect(sentBody.messages).toBeUndefined();
+      expect(result.isChatGpt).toBe(true);
+    });
+
+    it('routes inbound Responses API requests through the Token Plan Responses endpoint', async () => {
+      mockFetch.mockResolvedValue(new Response('{}', { status: 200 }));
+
+      const result = await client.forward({
+        provider: 'qwen',
+        apiKey: 'sk-sp-token-plan-key',
+        model: 'qwen3.7-max',
+        body: {
+          input: [{ role: 'user', content: 'Hello' }],
+          stream: false,
+        },
+        chatBody: { messages: [{ role: 'user', content: 'Hello' }], stream: false },
+        stream: false,
+        authType: 'subscription',
+        apiMode: 'responses',
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1/responses',
+        expect.any(Object),
+      );
+      const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(sentBody.model).toBe('qwen3.7-max');
+      expect(sentBody.input).toEqual([
+        { role: 'user', content: [{ type: 'input_text', text: 'Hello' }] },
+      ]);
+      expect(result.isResponses).toBe(true);
+    });
+  });
+
+  describe('Xiaomi MiMo Token Plan subscription provider', () => {
+    it('routes Xiaomi subscription auth to the Token Plan chat endpoint', async () => {
+      mockFetch.mockResolvedValue(new Response('{}', { status: 200 }));
+
+      await client.forward({
+        provider: 'xiaomi',
+        apiKey: 'tp-mimo-token',
+        model: 'mimo-v2.5-pro',
+        body,
+        stream: false,
+        authType: 'subscription',
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://token-plan-cn.xiaomimimo.com/v1/chat/completions',
+        expect.objectContaining({
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer tp-mimo-token',
+            'Content-Type': 'application/json',
+          },
+        }),
+      );
+      const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(sentBody.model).toBe('mimo-v2.5-pro');
     });
   });
 
@@ -1550,6 +1938,94 @@ describe('ProviderClient', () => {
         }),
       );
       expect(result.isGoogle).toBe(true);
+    });
+  });
+
+  describe('Command Code provider', () => {
+    it('routes non-Claude models through the Provider API chat completions endpoint', async () => {
+      mockFetch.mockResolvedValue(new Response('{}', { status: 200 }));
+
+      const result = await client.forward({
+        provider: 'commandcode',
+        apiKey: 'user_test',
+        model: 'commandcode/deepseek/deepseek-v4-flash',
+        body,
+        stream: false,
+        authType: 'subscription',
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://api.commandcode.ai/provider/v1/chat/completions',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: 'Bearer user_test',
+            'Content-Type': 'application/json',
+          }),
+        }),
+      );
+      const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(sentBody.model).toBe('deepseek/deepseek-v4-flash');
+      expect(result.isAnthropic).toBe(false);
+      expect(result.isChatGpt).toBe(false);
+      expect(result.isGoogle).toBe(false);
+    });
+
+    it('routes Claude models through the Provider API messages endpoint', async () => {
+      mockFetch.mockResolvedValue(new Response('{}', { status: 200 }));
+
+      const result = await client.forward({
+        provider: 'commandcode',
+        apiKey: 'user_test',
+        model: 'commandcode/claude-sonnet-4-6',
+        body,
+        stream: false,
+        authType: 'subscription',
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://api.commandcode.ai/provider/v1/messages',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'x-api-key': 'user_test',
+            'Content-Type': 'application/json',
+            'anthropic-version': '2023-06-01',
+          }),
+        }),
+      );
+      const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(sentBody.model).toBe('claude-sonnet-4-6');
+      expect(sentBody.system).toBeUndefined();
+      expect(result.isAnthropic).toBe(true);
+    });
+  });
+
+  describe('BytePlus provider', () => {
+    it('routes subscription traffic through the ModelArk Coding Plan messages endpoint', async () => {
+      mockFetch.mockResolvedValue(new Response('{}', { status: 200 }));
+
+      const result = await client.forward({
+        provider: 'byteplus',
+        apiKey: 'bp-token',
+        model: 'ark-code-latest',
+        body,
+        stream: false,
+        authType: 'subscription',
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://ark.ap-southeast.bytepluses.com/api/coding/v1/messages',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: 'Bearer bp-token',
+            'Content-Type': 'application/json',
+            'anthropic-version': '2023-06-01',
+          }),
+        }),
+      );
+      const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(sentBody.model).toBe('ark-code-latest');
+      expect(sentBody.system).toBeUndefined();
+      expect(result.isAnthropic).toBe(true);
     });
   });
 
@@ -2719,9 +3195,11 @@ describe('ProviderClient', () => {
       ['minimax', 'MiniMax-M2'],
       ['nvidia', 'nvidia/nemotron-3-super-120b-a12b'],
       ['qwen', 'qwen-max'],
+      ['xiaomi', 'mimo-v2.5-pro'],
       ['xai', 'grok-3'],
       ['zai', 'glm-4.6'],
       ['copilot', 'gpt-4o-copilot'],
+      ['commandcode', 'commandcode/deepseek/deepseek-v4-flash'],
       ['opencode-go', 'claude-sonnet-4'],
       ['opencode-zen', 'qwen3.6-plus'],
     ])(
@@ -2747,6 +3225,36 @@ describe('ProviderClient', () => {
         provider: 'zai',
         apiKey: 'sk-zai-sub',
         model: 'glm-4.6',
+        body: { messages: [{ role: 'user', content: 'Hello' }] },
+        stream: true,
+        authType: 'subscription',
+      });
+
+      const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(sentBody.stream_options).toEqual({ include_usage: true });
+    });
+
+    it('injects stream_options.include_usage for Qwen Token Plan streaming requests', async () => {
+      mockFetch.mockResolvedValue(new Response('{}', { status: 200 }));
+      await client.forward({
+        provider: 'qwen',
+        apiKey: 'sk-sp-token-plan-key',
+        model: 'qwen3.6-plus',
+        body: { messages: [{ role: 'user', content: 'Hello' }] },
+        stream: true,
+        authType: 'subscription',
+      });
+
+      const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      expect(sentBody.stream_options).toEqual({ include_usage: true });
+    });
+
+    it('injects stream_options.include_usage for Xiaomi MiMo Token Plan streaming requests', async () => {
+      mockFetch.mockResolvedValue(new Response('{}', { status: 200 }));
+      await client.forward({
+        provider: 'xiaomi',
+        apiKey: 'tp-mimo-token',
+        model: 'mimo-v2.5-pro',
         body: { messages: [{ role: 'user', content: 'Hello' }] },
         stream: true,
         authType: 'subscription',
@@ -3061,6 +3569,51 @@ describe('ProviderClient', () => {
       expect(sentBody.request.contents).toBeDefined();
       expect(result.isGoogle).toBe(true);
       expect(result.isCodeAssist).toBe(true);
+    });
+
+    it('sanitizes tool schemas inside the CodeAssist envelope for gemini subscription', async () => {
+      mockFetch.mockResolvedValue(new Response('{}', { status: 200 }));
+
+      await client.forward({
+        provider: 'gemini',
+        apiKey: 'access-token',
+        model: 'gemini-2.5-pro',
+        body: {
+          messages: [{ role: 'user', content: 'Set a threshold' }],
+          tools: [
+            {
+              type: 'function',
+              function: {
+                name: 'set_threshold',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    threshold: {
+                      type: 'number',
+                      minimum: 0,
+                      exclusiveMinimum: true,
+                      exclusiveMaximum: false,
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        },
+        stream: false,
+        authType: 'subscription',
+        providerResource: 'proj-code-assist-999',
+      });
+
+      const sentBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+      const tools = sentBody.request.tools as Array<{
+        functionDeclarations: Array<{ parameters: Record<string, unknown> }>;
+      }>;
+      const props = tools[0].functionDeclarations[0].parameters.properties as Record<
+        string,
+        Record<string, unknown>
+      >;
+      expect(props.threshold).toEqual({ type: 'number', minimum: 0 });
     });
 
     it('uses the non-stream generateContent path for non-streaming requests', async () => {

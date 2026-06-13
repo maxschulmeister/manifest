@@ -27,11 +27,18 @@ function createProviderService() {
   const upsertProvider = jest.fn().mockResolvedValue({ provider: { id: 'p1' } });
   const recalculateTiers = jest.fn().mockResolvedValue(undefined);
   const nextOAuthLabel = jest.fn().mockResolvedValue(undefined);
+  const getFreshSubscriptionCredential = jest.fn().mockResolvedValue(null);
   return {
-    svc: { upsertProvider, recalculateTiers, nextOAuthLabel } as unknown as ProviderService,
+    svc: {
+      upsertProvider,
+      recalculateTiers,
+      nextOAuthLabel,
+      getFreshSubscriptionCredential,
+    } as unknown as ProviderService,
     upsertProvider,
     recalculateTiers,
     nextOAuthLabel,
+    getFreshSubscriptionCredential,
   };
 }
 
@@ -202,8 +209,10 @@ describe('AnthropicOauthService', () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [tokenUrl, init] = fetchMock.mock.calls[0];
       expect(tokenUrl).toBe(ANTHROPIC_OAUTH.TOKEN_URL);
+      expect(new URL(tokenUrl).origin).toBe('https://api.anthropic.com');
       expect(init.headers).toEqual({
         'Content-Type': 'application/json',
+        Accept: 'application/json',
         'User-Agent': 'anthropic',
       });
       const body = JSON.parse(init.body);
@@ -354,6 +363,7 @@ describe('AnthropicOauthService', () => {
       expect(blob).toEqual({ t: 'a2', r: 'r2', e: Date.now() + 1800 * 1000 });
       expect(fetchMock.mock.calls[0][1].headers).toEqual({
         'Content-Type': 'application/json',
+        Accept: 'application/json',
         'User-Agent': 'anthropic',
       });
     });
@@ -390,7 +400,7 @@ describe('AnthropicOauthService', () => {
       fetchMock.mockResolvedValue(
         mockResponse(200, { access_token: 'new', refresh_token: 'rf2', expires_in: 3600 }),
       );
-      const token = await svc.unwrapToken(blob, 'agent-1', 'user-1');
+      const token = await svc.unwrapToken(blob, 'agent-1', 'user-1', 'Work');
       expect(token).toBe('new');
       expect(providerService.upsertProvider).toHaveBeenCalledWith(
         'agent-1',
@@ -398,6 +408,8 @@ describe('AnthropicOauthService', () => {
         'anthropic',
         expect.stringContaining('"t":"new"'),
         'subscription',
+        undefined,
+        'Work',
       );
     });
 

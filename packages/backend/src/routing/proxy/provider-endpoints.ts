@@ -5,9 +5,12 @@ import {
   CODEX_CLI_USER_AGENT,
   COPILOT_EDITOR_VERSION,
   COPILOT_PLUGIN_VERSION,
+  buildClaudeCodeSubscriptionHeaders,
 } from '../../common/constants/subscription-clients';
 import { normalizeProviderBaseUrl } from '../provider-base-url';
 import { getQwenCompatibleBaseUrl } from '../qwen-region';
+import { getXiaomiTokenPlanBaseUrl } from '../xiaomi-region';
+import { getZaiCodingPlanBaseUrl } from '../zai-region';
 import { buildKiroHeaders, KIRO_BASE_URL, KIRO_CHAT_TARGET } from './kiro-adapter';
 
 export interface ProviderEndpoint {
@@ -63,16 +66,15 @@ const openaiHeaders = (apiKey: string) => ({
 const openaiPath = () => '/v1/chat/completions';
 
 const anthropicHeaders = (apiKey: string, authType?: string): Record<string, string> => {
+  if (authType === 'subscription') {
+    return buildClaudeCodeSubscriptionHeaders(apiKey);
+  }
+
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'anthropic-version': '2023-06-01',
   };
-  if (authType === 'subscription') {
-    headers['Authorization'] = `Bearer ${apiKey}`;
-    headers['anthropic-beta'] = 'oauth-2025-04-20';
-  } else {
-    headers['x-api-key'] = apiKey;
-  }
+  headers['x-api-key'] = apiKey;
   return headers;
 };
 
@@ -97,9 +99,14 @@ const anthropicApiKeyHeaders = (apiKey: string): Record<string, string> => ({
  * endpoint to accept requests, but may break if OpenAI changes validation.
  */
 const CHATGPT_SUBSCRIPTION_BASE = 'https://chatgpt.com/backend-api';
+const BYTEPLUS_CODING_BASE = 'https://ark.ap-southeast.bytepluses.com/api/coding';
+const COMMAND_CODE_PROVIDER_BASE = 'https://api.commandcode.ai/provider';
 const KIMI_CODING_SUBSCRIPTION_BASE = 'https://api.kimi.com/coding';
 const MINIMAX_SUBSCRIPTION_BASE = 'https://api.minimax.io/anthropic';
-const ZAI_SUBSCRIPTION_BASE = 'https://open.bigmodel.cn/api/coding/paas/v4';
+const XIAOMI_MIMO_BASE = 'https://api.xiaomimimo.com';
+const XIAOMI_TOKEN_PLAN_BASE = getXiaomiTokenPlanBaseUrl();
+const QWEN_TOKEN_PLAN_BASE = 'https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode';
+const ZAI_SUBSCRIPTION_BASE = getZaiCodingPlanBaseUrl('global');
 const OPENCODE_GO_BASE = 'https://opencode.ai/zen/go';
 const OPENCODE_ZEN_BASE = 'https://opencode.ai/zen';
 const KILO_GATEWAY_BASE = 'https://api.kilo.ai/api/gateway';
@@ -146,6 +153,34 @@ export const PROVIDER_ENDPOINTS: Record<string, ProviderEndpoint> = {
     buildPath: openaiPath,
     format: 'openai',
     ...openaiStreamUsage,
+  },
+  byteplus: {
+    baseUrl: BYTEPLUS_CODING_BASE,
+    buildHeaders: openaiHeaders,
+    buildPath: () => '/v3/chat/completions',
+    format: 'openai',
+    ...openaiStreamUsage,
+  },
+  'byteplus-anthropic': {
+    baseUrl: BYTEPLUS_CODING_BASE,
+    buildHeaders: anthropicBearerHeaders,
+    buildPath: () => '/v1/messages',
+    format: 'anthropic',
+    skipSubscriptionIdentity: true,
+  },
+  commandcode: {
+    baseUrl: COMMAND_CODE_PROVIDER_BASE,
+    buildHeaders: openaiHeaders,
+    buildPath: openaiPath,
+    format: 'openai',
+    ...openaiStreamUsage,
+  },
+  'commandcode-anthropic': {
+    baseUrl: COMMAND_CODE_PROVIDER_BASE,
+    buildHeaders: anthropicApiKeyHeaders,
+    buildPath: () => '/v1/messages',
+    format: 'anthropic',
+    skipSubscriptionIdentity: true,
   },
   fireworks: {
     baseUrl: FIREWORKS_INFERENCE_BASE,
@@ -200,6 +235,20 @@ export const PROVIDER_ENDPOINTS: Record<string, ProviderEndpoint> = {
     buildPath: () => '/v1/messages',
     format: 'anthropic',
   },
+  xiaomi: {
+    baseUrl: XIAOMI_MIMO_BASE,
+    buildHeaders: openaiHeaders,
+    buildPath: openaiPath,
+    format: 'openai',
+    ...openaiStreamUsage,
+  },
+  'xiaomi-subscription': {
+    baseUrl: XIAOMI_TOKEN_PLAN_BASE,
+    buildHeaders: openaiHeaders,
+    buildPath: openaiPath,
+    format: 'openai',
+    ...openaiStreamUsage,
+  },
   moonshot: {
     baseUrl: 'https://api.moonshot.ai',
     buildHeaders: openaiHeaders,
@@ -227,6 +276,19 @@ export const PROVIDER_ENDPOINTS: Record<string, ProviderEndpoint> = {
     buildPath: openaiPath,
     format: 'openai',
     ...openaiStreamUsage,
+  },
+  'qwen-subscription': {
+    baseUrl: QWEN_TOKEN_PLAN_BASE,
+    buildHeaders: openaiHeaders,
+    buildPath: openaiPath,
+    format: 'openai',
+    ...openaiStreamUsage,
+  },
+  'qwen-subscription-responses': {
+    baseUrl: QWEN_TOKEN_PLAN_BASE,
+    buildHeaders: openaiHeaders,
+    buildPath: () => '/v1/responses',
+    format: 'chatgpt',
   },
   zai: {
     baseUrl: 'https://api.z.ai',

@@ -6,7 +6,7 @@ import { UserProvider } from '../entities/user-provider.entity';
 import { CustomProvider } from '../entities/custom-provider.entity';
 import { ProviderModelFetcherService, filterNonChatModels } from './provider-model-fetcher.service';
 import { ProviderModelRegistryService } from './provider-model-registry.service';
-import { DiscoveredModel } from './model-fetcher';
+import { DiscoveredModel, DEFAULT_CONTEXT_WINDOW } from './model-fetcher';
 import { decrypt, getEncryptionSecret } from '../common/utils/crypto.util';
 import { computeQualityScore } from '../database/quality-score.util';
 import { PricingSyncService } from '../database/pricing-sync.service';
@@ -14,8 +14,13 @@ import { ModelsDevSyncService } from '../database/models-dev-sync.service';
 import { parseOAuthTokenBlob } from '../routing/oauth/openai-oauth.types';
 import { getQwenCompatibleBaseUrl, isQwenResolvedRegion } from '../routing/qwen-region';
 import { MINIMAX_BASE_URLS } from '../routing/oauth/minimax-oauth-helpers';
+import {
+  getXiaomiTokenPlanBaseUrl,
+  isXiaomiProviderId,
+  isXiaomiTokenPlanRegion,
+} from '../routing/xiaomi-region';
+import { getZaiCodingPlanBaseUrl } from '../routing/zai-region';
 import { CopilotTokenService } from '../routing/proxy/copilot-token.service';
-import { filterBySubscriptionAccess } from './anthropic-subscription-probe';
 import {
   findOpenRouterPrefix,
   lookupWithVariants,
@@ -35,9 +40,27 @@ function isQwenProvider(providerId: string): boolean {
   return lower === 'qwen' || lower === 'alibaba';
 }
 
+/** 2-minute TTL for the per-agent discovered-model list, matching RoutingCacheService. */
+const MODELS_CACHE_TTL_MS = 120_000;
+
+interface ModelsCacheEntry {
+  data: DiscoveredModel[];
+  expiresAt: number;
+}
+
 @Injectable()
 export class ModelDiscoveryService {
   private readonly logger = new Logger(ModelDiscoveryService.name);
+
+  // Per-agent cache for getModelsForAgent(). This is the hottest uncached DB
+  // hit on the routing decision path (every override/specificity request calls
+  // it via isModelAvailable / getModelForAgent). The cache lives here rather
+  // than in RoutingCacheService to avoid a module-level circular dependency:
+  // RoutingCoreModule already imports ModelDiscoveryModule, so the reverse edge
+  // would form a cycle. Invalidation is driven by the discovery write path
+  // (below) and by ResolveService bridging RoutingCacheService.invalidateAgent
+  // to invalidate() — see ResolveService for the wiring.
+  private readonly modelsCache = new Map<string, ModelsCacheEntry>();
 
   constructor(
     @InjectRepository(UserProvider)
@@ -77,6 +100,7 @@ export class ModelDiscoveryService {
     if (provider.auth_type === 'subscription' && apiKey) {
       if (
         lowerProvider === 'openai' ||
+        lowerProvider === 'anthropic' ||
         lowerProvider === 'minimax' ||
         lowerProvider === 'kiro' ||
         lowerProvider === 'xai'
@@ -113,15 +137,34 @@ export class ModelDiscoveryService {
     if (isQwenProvider(provider.provider) && isQwenResolvedRegion(provider.region)) {
       endpointOverride = getQwenCompatibleBaseUrl(provider.region);
     }
+    if (
+      provider.provider.toLowerCase() === 'zai' &&
+      provider.auth_type === 'subscription' &&
+      provider.region === 'cn'
+    ) {
+      endpointOverride = getZaiCodingPlanBaseUrl('cn');
+    }
+    if (
+      isXiaomiProviderId(provider.provider) &&
+      provider.auth_type === 'subscription' &&
+      isXiaomiTokenPlanRegion(provider.region)
+    ) {
+      endpointOverride = getXiaomiTokenPlanBaseUrl(provider.region);
+    }
 
     let raw: DiscoveredModel[];
 
-    // Subscription providers without a token: use curated fallback
-    if (provider.auth_type === 'subscription' && !apiKey) {
+    const useCuratedSubscriptionModels =
+      provider.auth_type === 'subscription' && (!apiKey || lowerProvider === 'anthropic');
+
+    // Subscription providers without a token use curated fallback. Anthropic
+    // subscription discovery is also static so connecting Claude Code does
+    // not spend live /models or /messages calls before the first real request.
+    if (useCuratedSubscriptionModels) {
       raw = buildSubscriptionFallbackModels(this.pricingSync, provider.provider);
       if (raw.length > 0) {
         this.logger.log(
-          `No token for subscription provider ${provider.provider} — using ${raw.length} fallback models`,
+          `Subscription provider ${provider.provider} — using ${raw.length} curated models`,
         );
       }
     } else {
@@ -134,10 +177,7 @@ export class ModelDiscoveryService {
 
       // Register confirmed model IDs from native API for future fallback filtering
       if (raw.length > 0 && this.modelRegistry) {
-        this.modelRegistry.registerModels(
-          provider.provider,
-          raw.map((m) => m.id),
-        );
+        this.modelRegistry.registerModels(provider.provider, raw);
       }
 
       // Subscription providers whose `/models` endpoint either does not
@@ -181,13 +221,6 @@ export class ModelDiscoveryService {
       raw = supplementWithKnownModels(raw, provider.provider);
     }
 
-    // Anthropic subscription tokens may only access certain model families
-    // (e.g. Pro = haiku only, Team = haiku + sonnet). Probe one model per
-    // family to filter out inaccessible models before showing them to the user.
-    if (lowerProvider === 'anthropic' && provider.auth_type === 'subscription' && apiKey) {
-      raw = await filterBySubscriptionAccess(raw, apiKey);
-    }
-
     // Preserve the full AuthType union (api_key / subscription / local) —
     // narrowing to the two legacy values would drop the 'local' tag that the
     // frontend uses to render the house badge and the Local tab.
@@ -222,6 +255,9 @@ export class ModelDiscoveryService {
     provider.cached_models = filtered;
     provider.models_fetched_at = new Date().toISOString();
     await this.providerRepo.save(provider);
+    // The agent's effective model list just changed on disk — drop the cache
+    // so getModelsForAgent() reassembles it on the next read.
+    this.invalidate(provider.agent_id);
 
     this.logger.log(
       `Discovered ${filtered.length} models for provider ${provider.provider} (agent ${provider.agent_id})`,
@@ -301,7 +337,38 @@ export class ModelDiscoveryService {
     }
   }
 
+  /**
+   * Cached view of an agent's discovered models (2-minute TTL). Returns the
+   * cached list when warm, otherwise runs the full DB-backed assembly and
+   * caches the result. Invalidated on any provider mutation (see invalidate()).
+   */
   async getModelsForAgent(agentId: string): Promise<DiscoveredModel[]> {
+    const cached = this.modelsCache.get(agentId);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.data;
+    }
+    if (cached) this.modelsCache.delete(agentId);
+
+    const models = await this.fetchModelsForAgent(agentId);
+    const now = Date.now();
+    // Sweep expired entries on populate so the cache can't grow unbounded as
+    // agents come and go (entries are otherwise only dropped on miss/invalidate).
+    for (const [key, entry] of this.modelsCache) {
+      if (entry.expiresAt <= now) this.modelsCache.delete(key);
+    }
+    this.modelsCache.set(agentId, { data: models, expiresAt: now + MODELS_CACHE_TTL_MS });
+    return models;
+  }
+
+  /**
+   * Drop the cached model list for an agent. Called whenever the agent's
+   * provider set or cached_models change so callers never see a stale list.
+   */
+  invalidate(agentId: string): void {
+    this.modelsCache.delete(agentId);
+  }
+
+  private async fetchModelsForAgent(agentId: string): Promise<DiscoveredModel[]> {
     const providers = await this.providerRepo.find({
       where: { agent_id: agentId, is_active: true },
     });
@@ -313,9 +380,13 @@ export class ModelDiscoveryService {
       if (p.provider.startsWith('custom:')) continue;
       const rawCached = p.cached_models;
       if (!Array.isArray(rawCached)) continue;
-      const cached = filterNonChatModels(rawCached, p.provider.toLowerCase());
       const providerAuthType: AuthType = p.auth_type;
       const providerId = p.provider.toLowerCase();
+      const filterKey =
+        providerId === 'openai' && providerAuthType === 'subscription'
+          ? 'openai-subscription'
+          : providerId;
+      const cached = filterNonChatModels(rawCached, filterKey);
       for (const m of cached) {
         const effectiveAuthType = m.authType ?? providerAuthType;
         // Deduplicate by the routable tuple, not just model ID. Multiple
@@ -361,7 +432,7 @@ export class ModelDiscoveryService {
           displayName: m.model_name,
           provider: cpKey,
           authType: customAuthTypes.get(cpKey) ?? 'api_key',
-          contextWindow: m.context_window ?? 128000,
+          contextWindow: m.context_window ?? DEFAULT_CONTEXT_WINDOW,
           inputPricePerToken: inputPerToken,
           outputPricePerToken: outputPerToken,
           capabilityReasoning: false,

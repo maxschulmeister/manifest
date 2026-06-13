@@ -1,5 +1,36 @@
 # manifest
 
+## 6.9.2
+
+### Patch Changes
+
+- 2d7541b: Resolve model parameter specs through the providerless modelparams.dev by-model endpoint so gateway routes such as GitHub Copilot can expose the underlying model's thinking and reasoning controls.
+- 5006434: Speed up the dashboard and lower proxy overhead: unbuffered SSE streaming, smaller render-blocking CSS, lazy-loaded modals, cached per-agent model lookups, and new indexes for hot queries.
+- aad3033: Fix native `/v1/responses` forwarding so typed non-message input items such as `reasoning` and `item_reference` are preserved without a `role`, preventing ChatGPT subscription Codex backend 400 errors on multi-turn Codex requests.
+
+## 6.9.1
+
+### Patch Changes
+
+- e2ec0a6: Add BytePlus ModelArk Coding Plan as a subscription provider.
+- 90e7af5: Add Command Code subscription routing with dynamic model discovery and OpenAI/Anthropic Provider API forwarding.
+- c78f6fb: Persist refreshed OAuth subscription tokens to the same provider account label that supplied the token.
+- 4884967: Add Qwen Token Plan as a subscription option for the Alibaba Cloud provider.
+- 6cdd23d: Add a Z.ai GLM Coding Plan endpoint selector for outside-China and China Mainland subscription routing.
+
+## 6.9.0
+
+### Minor Changes
+
+- 50e7ecd: Add OpenCode Zen as an API-key provider. OpenCode Zen exposes an OpenAI-compatible `/v1/models` catalog and `/v1/chat/completions` proxy endpoint, plus a native Anthropic `/v1/messages` endpoint for Claude models. Manifest now discovers Zen models on connect and routes Claude requests through `/v1/messages` (with `x-api-key` auth) and everything else through `/v1/chat/completions` (with Bearer auth).
+
+### Patch Changes
+
+- 0eff607: Keep same-name models from different providers available in the routing model picker.
+- d950469: Add Fireworks AI as an official API-key routing provider.
+- d439884: Add Kimi Coding Plan subscription routing for Moonshot/Kimi with the `kimi-for-coding` model.
+- 31383c5: Refresh OAuth subscription credentials once when the upstream rejects a stored access token.
+
 ## 6.8.3
 
 ### Patch Changes

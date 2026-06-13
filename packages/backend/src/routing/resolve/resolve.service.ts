@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import type { IncomingHttpHeaders } from 'http';
 import { TierService } from '../routing-core/tier.service';
 import { ProviderKeyService } from '../routing-core/provider-key.service';
+import { RoutingCacheService } from '../routing-core/routing-cache.service';
 import { SpecificityService } from '../routing-core/specificity.service';
 import { SpecificityPenaltyService } from '../routing-core/specificity-penalty.service';
 import { HeaderTierService } from '../header-tiers/header-tier.service';
@@ -27,6 +28,11 @@ import type {
 import type { HeaderTier } from '../../entities/header-tier.entity';
 import type { TierAssignment } from '../../entities/tier-assignment.entity';
 import type { SpecificityAssignment } from '../../entities/specificity-assignment.entity';
+
+interface ResolvedRouteChain {
+  primaryRoute: ModelRoute | null;
+  fallbackRoutes: ModelRoute[] | null;
+}
 
 /**
  * When specificity detection is below this confidence, skip specificity
@@ -54,7 +60,16 @@ export class ResolveService {
     private readonly headerTierService: HeaderTierService,
     @InjectRepository(Agent)
     private readonly agentRepo: Repository<Agent>,
-  ) {}
+    private readonly routingCache: RoutingCacheService,
+  ) {
+    // Bridge the central routing-cache invalidation to the discovered-model
+    // cache. Every provider mutation already calls routingCache.invalidateAgent;
+    // forwarding it here keeps ModelDiscoveryService's per-agent model cache
+    // fresh without a cross-module dependency (which would cycle).
+    this.routingCache.addInvalidationListener((agentId) =>
+      this.discoveryService.invalidate(agentId),
+    );
+  }
 
   async resolve(
     agentId: string,
@@ -108,8 +123,12 @@ export class ResolveService {
     const outputModality = outputModalityFor(assignment);
     const responseMode = responseModeFor(assignment);
     const fallbackRoutes = readFallbackRoutes(assignment);
-    const route = await this.buildResolvedRoute(agentId, assignment);
-    const effectiveRoutes = effectiveRoutesForResponseMode(responseMode, route, fallbackRoutes);
+    const routeChain = await this.buildResolvedRouteChain(agentId, assignment, fallbackRoutes);
+    const effectiveRoutes = effectiveRoutesForResponseMode(
+      responseMode,
+      routeChain.primaryRoute,
+      routeChain.fallbackRoutes,
+    );
     if (!effectiveRoutes.primaryRoute) {
       this.logger.warn(
         `No route resolved for agent=${agentId} tier=${result.tier} ` +
@@ -164,8 +183,12 @@ export class ResolveService {
     const outputModality = outputModalityFor(assignment);
     const responseMode = responseModeFor(assignment);
     const fallbackRoutes = readFallbackRoutes(assignment);
-    const route = await this.buildResolvedRoute(agentId, assignment);
-    const effectiveRoutes = effectiveRoutesForResponseMode(responseMode, route, fallbackRoutes);
+    const routeChain = await this.buildResolvedRouteChain(agentId, assignment, fallbackRoutes);
+    const effectiveRoutes = effectiveRoutesForResponseMode(
+      responseMode,
+      routeChain.primaryRoute,
+      routeChain.fallbackRoutes,
+    );
     return {
       tier,
       route: effectiveRoutes.primaryRoute,
@@ -319,27 +342,44 @@ export class ResolveService {
   }
 
   /**
-   * Build the resolved route for a tier assignment. Validates the override
-   * still points to an available model; falls through to auto-assigned when
-   * the override is orphaned. Enriches with the default key label when no
-   * explicit pin is present.
+   * Build the resolved route chain for a tier assignment. Validates the
+   * override still points to an available model; when an override is orphaned,
+   * walk configured fallbacks before trying the auto-assigned route. Enriches
+   * routes with the default key label when no explicit pin is present.
    */
-  private async buildResolvedRoute(
+  private async buildResolvedRouteChain(
     agentId: string,
     assignment: TierAssignment | SpecificityAssignment,
-  ): Promise<ModelRoute | null> {
+    fallbackRoutes: ModelRoute[] | null,
+  ): Promise<ResolvedRouteChain> {
     const override = readOverrideRoute(assignment);
     if (override) {
       if (await this.providerKeyService.isModelAvailable(agentId, override.model)) {
-        return this.enrichRouteKeyLabel(agentId, override);
+        return {
+          primaryRoute: await this.enrichRouteKeyLabel(agentId, override),
+          fallbackRoutes,
+        };
       }
       this.logger.warn(
-        `Override ${override.model} unavailable for agent=${agentId} — falling back to auto`,
+        `Override ${override.model} unavailable for agent=${agentId} — ` +
+          `falling back to configured routes`,
       );
+      const candidates = [
+        ...(fallbackRoutes ?? []),
+        ...(assignment.auto_assigned_route ? [assignment.auto_assigned_route] : []),
+      ];
+      const [primaryRoute, ...remainingFallbacks] = candidates;
+      return {
+        primaryRoute: primaryRoute ? await this.enrichRouteKeyLabel(agentId, primaryRoute) : null,
+        fallbackRoutes: remainingFallbacks.length > 0 ? remainingFallbacks : null,
+      };
     }
-    return assignment.auto_assigned_route
-      ? this.enrichRouteKeyLabel(agentId, assignment.auto_assigned_route)
-      : null;
+    return {
+      primaryRoute: assignment.auto_assigned_route
+        ? await this.enrichRouteKeyLabel(agentId, assignment.auto_assigned_route)
+        : null,
+      fallbackRoutes,
+    };
   }
 
   /**

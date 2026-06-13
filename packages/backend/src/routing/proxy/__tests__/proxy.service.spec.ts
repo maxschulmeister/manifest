@@ -31,6 +31,7 @@ import type { ProviderParamSpecService } from '../../routing-core/provider-param
  */
 jest.mock('../stream-warmup', () => ({
   peekStream: jest.fn(),
+  STREAM_WARMUP_MS: 15_000,
 }));
 
 import { peekStream } from '../stream-warmup';
@@ -309,6 +310,88 @@ describe('ProxyService — orchestration', () => {
       expect(result.meta.model).toBe('gpt-4o');
       expect(result.meta.provider).toBe('openai');
       expect(momentum.recordTier).toHaveBeenCalledWith('sess-1', 'standard');
+    });
+
+    it('passes the raw stored OpenAI OAuth blob alongside the unwrapped access token', async () => {
+      const rawBlob = JSON.stringify({
+        t: 'cached-access',
+        r: 'refresh-token',
+        e: Date.now() + 10 * 60 * 1000,
+      });
+      resolveService.resolve.mockResolvedValue({
+        tier: 'standard',
+        route: { ...route('openai', 'subscription', 'gpt-5.3-codex'), keyLabel: 'Work' },
+        fallback_routes: null,
+        confidence: 0.9,
+        score: 5,
+        reason: 'scored',
+      });
+      providerKeyService.getProviderApiKey.mockResolvedValue(rawBlob);
+      openaiOauth.unwrapToken.mockResolvedValue('cached-access');
+      fallbackService.tryForwardToProvider.mockResolvedValue({
+        response: okResponse(200),
+        isGoogle: false,
+        isAnthropic: false,
+        isChatGpt: true,
+      });
+
+      await svc.proxyRequest(baseOpts());
+
+      expect(fallbackService.tryForwardToProvider).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider: 'openai',
+          authType: 'subscription',
+          apiKey: 'cached-access',
+          rawApiKey: rawBlob,
+          providerKeyLabel: 'Work',
+          agentId: 'agent-1',
+          userId: 'user-1',
+        }),
+      );
+    });
+
+    it('passes the latest stored OAuth blob after preflight refresh rotates tokens', async () => {
+      const staleBlob = JSON.stringify({
+        t: 'stale-access',
+        r: 'stale-refresh',
+        e: Date.now() - 10 * 60 * 1000,
+      });
+      const refreshedBlob = JSON.stringify({
+        t: 'fresh-access',
+        r: 'rotated-refresh',
+        e: Date.now() + 10 * 60 * 1000,
+      });
+      resolveService.resolve.mockResolvedValue({
+        tier: 'standard',
+        route: { ...route('openai', 'subscription', 'gpt-5.3-codex'), keyLabel: 'Work' },
+        fallback_routes: null,
+        confidence: 0.9,
+        score: 5,
+        reason: 'scored',
+      });
+      providerKeyService.getProviderApiKey
+        .mockResolvedValueOnce(staleBlob)
+        .mockResolvedValueOnce(refreshedBlob);
+      openaiOauth.unwrapToken.mockResolvedValue('fresh-access');
+      fallbackService.tryForwardToProvider.mockResolvedValue({
+        response: okResponse(200),
+        isGoogle: false,
+        isAnthropic: false,
+        isChatGpt: true,
+      });
+
+      await svc.proxyRequest(baseOpts());
+
+      expect(providerKeyService.getProviderApiKey).toHaveBeenCalledTimes(2);
+      expect(fallbackService.tryForwardToProvider).toHaveBeenCalledWith(
+        expect.objectContaining({
+          provider: 'openai',
+          authType: 'subscription',
+          apiKey: 'fresh-access',
+          rawApiKey: refreshedBlob,
+          providerKeyLabel: 'Work',
+        }),
+      );
     });
 
     it('records the specificity category when the route originates from specificity', async () => {
@@ -887,6 +970,7 @@ describe('ProxyService — orchestration', () => {
         ...baseOpts({ body: { messages: [{ role: 'user', content: 'hi' }], stream: true } }),
       });
       expect(result.forward.response.status).toBe(200);
+      expect(mockedPeek).toHaveBeenCalledWith(streamRes.body, 15_000);
       expect(momentum.recordTier).toHaveBeenCalled();
     });
 

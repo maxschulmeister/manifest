@@ -5,6 +5,7 @@ import {
   supportsSubscriptionProvider,
   getSubscriptionKnownModels,
   getSubscriptionKnownModelsMatch,
+  getSubscriptionExcludedModels,
   getSubscriptionCapabilities,
 } from '../src/subscription';
 
@@ -13,10 +14,14 @@ describe('SUBSCRIPTION_PROVIDER_CONFIGS', () => {
     expect(Object.keys(SUBSCRIPTION_PROVIDER_CONFIGS)).toEqual(
       expect.arrayContaining([
         'anthropic',
+        'byteplus',
         'openai',
         'minimax',
+        'xiaomi',
+        'qwen',
         'moonshot',
         'copilot',
+        'commandcode',
         'ollama-cloud',
         'zai',
         'opencode-go',
@@ -64,11 +69,62 @@ describe('getSubscriptionProviderConfig', () => {
     });
   });
 
+  it('returns config for BytePlus ModelArk Coding Plan', () => {
+    const config = getSubscriptionProviderConfig('byteplus');
+    expect(config).toMatchObject({
+      supportsSubscription: true,
+      subscriptionLabel: 'ModelArk Coding Plan',
+      subscriptionAuthMode: 'token',
+      subscriptionKeyPlaceholder: 'Paste your ModelArk Coding Plan API key',
+      knownModelsMatch: 'exact',
+    });
+    expect(config?.knownModels).toEqual(
+      expect.arrayContaining([
+        'ark-code-latest',
+        'bytedance-seed-code',
+        'deepseek-v4-flash',
+        'deepseek-v4-pro',
+      ]),
+    );
+  });
+
   it('returns config for minimax', () => {
     const config = getSubscriptionProviderConfig('minimax');
     expect(config).toMatchObject({
       subscriptionAuthMode: 'device_code',
     });
+  });
+
+  it('returns config for Xiaomi MiMo Token Plan', () => {
+    const config = getSubscriptionProviderConfig('xiaomi');
+    expect(config).toMatchObject({
+      supportsSubscription: true,
+      subscriptionLabel: 'Xiaomi MiMo Token Plan',
+      subscriptionAuthMode: 'token',
+      subscriptionKeyPlaceholder: 'Paste your MiMo Token Plan API key',
+      subscriptionTokenPrefix: 'tp-',
+      knownModelsMatch: 'exact',
+    });
+    expect(config?.knownModels).toEqual([
+      'mimo-v2.5-pro',
+      'mimo-v2-pro',
+      'mimo-v2.5',
+      'mimo-v2-omni',
+      'mimo-v2-flash',
+    ]);
+  });
+
+  it('returns config for Qwen Token Plan', () => {
+    const config = getSubscriptionProviderConfig('qwen');
+    expect(config).toMatchObject({
+      supportsSubscription: true,
+      subscriptionLabel: 'Qwen Token Plan',
+      subscriptionAuthMode: 'token',
+      subscriptionKeyPlaceholder: 'Paste your Qwen Token Plan API key',
+      subscriptionTokenPrefix: 'sk-sp-',
+    });
+    expect(config?.knownModels).toBeUndefined();
+    expect(config?.knownModelsMatch).toBeUndefined();
   });
 
   it('returns config for moonshot Kimi Coding Plan', () => {
@@ -87,6 +143,16 @@ describe('getSubscriptionProviderConfig', () => {
     expect(config).toMatchObject({
       subscriptionLabel: 'GitHub Copilot subscription',
       subscriptionAuthMode: 'device_code',
+    });
+  });
+
+  it('returns config for Command Code', () => {
+    const config = getSubscriptionProviderConfig('commandcode');
+    expect(config).toMatchObject({
+      supportsSubscription: true,
+      subscriptionLabel: 'Command Code subscription',
+      subscriptionAuthMode: 'token',
+      subscriptionKeyPlaceholder: 'Paste your Command Code API key',
     });
   });
 
@@ -177,6 +243,11 @@ describe('getSubscriptionProviderConfig', () => {
     expect(getSubscriptionProviderConfig('OpenAI')).not.toBeNull();
   });
 
+  it('resolves provider aliases to subscription configs', () => {
+    expect(getSubscriptionProviderConfig('google')).toBe(getSubscriptionProviderConfig('gemini'));
+    expect(getSubscriptionProviderConfig('Google')).toBe(getSubscriptionProviderConfig('gemini'));
+  });
+
   it('returns null for unsupported providers', () => {
     expect(getSubscriptionProviderConfig('unknown')).toBeNull();
   });
@@ -189,15 +260,24 @@ describe('getSubscriptionProviderConfig', () => {
 describe('supportsSubscriptionProvider', () => {
   it('returns true for supported providers', () => {
     expect(supportsSubscriptionProvider('anthropic')).toBe(true);
+    expect(supportsSubscriptionProvider('byteplus')).toBe(true);
     expect(supportsSubscriptionProvider('openai')).toBe(true);
     expect(supportsSubscriptionProvider('minimax')).toBe(true);
+    expect(supportsSubscriptionProvider('xiaomi')).toBe(true);
+    expect(supportsSubscriptionProvider('qwen')).toBe(true);
     expect(supportsSubscriptionProvider('moonshot')).toBe(true);
     expect(supportsSubscriptionProvider('copilot')).toBe(true);
+    expect(supportsSubscriptionProvider('commandcode')).toBe(true);
     expect(supportsSubscriptionProvider('ollama-cloud')).toBe(true);
     expect(supportsSubscriptionProvider('zai')).toBe(true);
     expect(supportsSubscriptionProvider('opencode-go')).toBe(true);
     expect(supportsSubscriptionProvider('gemini')).toBe(true);
     expect(supportsSubscriptionProvider('xai')).toBe(true);
+  });
+
+  it('returns true for aliases of supported providers', () => {
+    expect(supportsSubscriptionProvider('google')).toBe(true);
+    expect(supportsSubscriptionProvider('Google')).toBe(true);
   });
 
   it('returns false for unsupported providers', () => {
@@ -210,6 +290,7 @@ describe('supportsSubscriptionProvider', () => {
 describe('getSubscriptionKnownModels', () => {
   it('returns known models for anthropic', () => {
     const models = getSubscriptionKnownModels('anthropic');
+    expect(models).toContain('claude-fable-5');
     expect(models).toContain('claude-opus-4');
     expect(models).toContain('claude-sonnet-4');
   });
@@ -220,11 +301,37 @@ describe('getSubscriptionKnownModels', () => {
     expect(models).toContain('copilot/gpt-5.4');
   });
 
+  it('returns known models for BytePlus ModelArk Coding Plan', () => {
+    const models = getSubscriptionKnownModels('byteplus');
+    expect(models).toEqual(
+      expect.arrayContaining(['ark-code-latest', 'bytedance-seed-code', 'glm-5.1', 'kimi-k2.5']),
+    );
+  });
+
+  it('returns null for Command Code (dynamic Provider API catalog, no hardcoded list)', () => {
+    expect(getSubscriptionKnownModels('commandcode')).toBeNull();
+  });
+
   it('returns known models for minimax including M2.7', () => {
     const models = getSubscriptionKnownModels('minimax');
     expect(models).toContain('MiniMax-M2.7');
     expect(models).toContain('MiniMax-M2.7-highspeed');
     expect(models).toContain('MiniMax-M2.5');
+  });
+
+  it('returns known models for Xiaomi MiMo Token Plan', () => {
+    const models = getSubscriptionKnownModels('xiaomi');
+    expect(models).toEqual([
+      'mimo-v2.5-pro',
+      'mimo-v2-pro',
+      'mimo-v2.5',
+      'mimo-v2-omni',
+      'mimo-v2-flash',
+    ]);
+  });
+
+  it('returns null known models for Qwen Token Plan (relies on live /v1/models discovery)', () => {
+    expect(getSubscriptionKnownModels('qwen')).toBeNull();
   });
 
   it('returns the fixed model id for moonshot Kimi Coding Plan', () => {
@@ -273,8 +380,8 @@ describe('getSubscriptionKnownModelsMatch', () => {
     expect(getSubscriptionKnownModelsMatch('anthropic')).toBe('prefix');
   });
 
-  it('returns prefix for openai (no override)', () => {
-    expect(getSubscriptionKnownModelsMatch('openai')).toBe('prefix');
+  it('returns exact for openai', () => {
+    expect(getSubscriptionKnownModelsMatch('openai')).toBe('exact');
   });
 
   it('returns exact for gemini', () => {
@@ -283,8 +390,20 @@ describe('getSubscriptionKnownModelsMatch', () => {
     expect(getSubscriptionKnownModelsMatch('gemini')).toBe('exact');
   });
 
+  it('returns exact for BytePlus ModelArk Coding Plan', () => {
+    expect(getSubscriptionKnownModelsMatch('byteplus')).toBe('exact');
+  });
+
   it('returns exact for moonshot Kimi Coding Plan', () => {
     expect(getSubscriptionKnownModelsMatch('moonshot')).toBe('exact');
+  });
+
+  it('returns exact for Xiaomi MiMo Token Plan', () => {
+    expect(getSubscriptionKnownModelsMatch('xiaomi')).toBe('exact');
+  });
+
+  it('returns prefix for Qwen Token Plan (no hardcoded known-model matching)', () => {
+    expect(getSubscriptionKnownModelsMatch('qwen')).toBe('prefix');
   });
 
   it('returns prefix for unsupported providers (graceful fallback)', () => {
@@ -294,6 +413,20 @@ describe('getSubscriptionKnownModelsMatch', () => {
   it('is case-insensitive', () => {
     expect(getSubscriptionKnownModelsMatch('GEMINI')).toBe('exact');
     expect(getSubscriptionKnownModelsMatch('Anthropic')).toBe('prefix');
+  });
+});
+
+describe('getSubscriptionExcludedModels', () => {
+  it('returns the -fast exclusion for anthropic', () => {
+    expect(getSubscriptionExcludedModels('anthropic')).toEqual(['-fast']);
+  });
+
+  it('returns an empty array for providers with no exclusion configured', () => {
+    expect(getSubscriptionExcludedModels('gemini')).toEqual([]);
+  });
+
+  it('returns an empty array for unknown providers', () => {
+    expect(getSubscriptionExcludedModels('unknown')).toEqual([]);
   });
 });
 
@@ -326,6 +459,15 @@ describe('getSubscriptionCapabilities', () => {
     });
   });
 
+  it('returns capabilities for BytePlus ModelArk Coding Plan', () => {
+    const caps = getSubscriptionCapabilities('byteplus');
+    expect(caps).toMatchObject({
+      maxContextWindow: 256000,
+      supportsPromptCaching: false,
+      supportsBatching: false,
+    });
+  });
+
   it('returns capabilities for zai with 204800 context window', () => {
     const caps = getSubscriptionCapabilities('zai');
     expect(caps).toMatchObject({
@@ -344,10 +486,37 @@ describe('getSubscriptionCapabilities', () => {
     });
   });
 
+  it('returns capabilities for Qwen Token Plan', () => {
+    const caps = getSubscriptionCapabilities('qwen');
+    expect(caps).toMatchObject({
+      maxContextWindow: 991000,
+      supportsPromptCaching: false,
+      supportsBatching: false,
+    });
+  });
+
+  it('returns capabilities for Xiaomi MiMo Token Plan', () => {
+    const caps = getSubscriptionCapabilities('xiaomi');
+    expect(caps).toMatchObject({
+      maxContextWindow: 1048576,
+      supportsPromptCaching: false,
+      supportsBatching: false,
+    });
+  });
+
   it('returns capabilities for xai', () => {
     const caps = getSubscriptionCapabilities('xai');
     expect(caps).toMatchObject({
       maxContextWindow: 128000,
+      supportsPromptCaching: false,
+      supportsBatching: false,
+    });
+  });
+
+  it('returns capabilities for Command Code', () => {
+    const caps = getSubscriptionCapabilities('commandcode');
+    expect(caps).toMatchObject({
+      maxContextWindow: 1000000,
       supportsPromptCaching: false,
       supportsBatching: false,
     });
