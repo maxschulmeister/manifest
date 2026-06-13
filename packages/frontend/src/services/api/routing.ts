@@ -355,6 +355,12 @@ export function refreshProviderModels(agentName: string, provider: string, authT
   return fetchMutate<ProviderRefreshResult>(path, { method: 'POST' });
 }
 
+export function getProviderModels(agentName: string, provider: string, authType: AuthType) {
+  return fetchJson<AvailableModel[]>(
+    `${routingPath(agentName, `providers/${encodeURIComponent(provider)}/models`)}?authType=${authType}`,
+  );
+}
+
 /* -- Routing: Pricing cache health -- */
 
 export interface PricingHealth {

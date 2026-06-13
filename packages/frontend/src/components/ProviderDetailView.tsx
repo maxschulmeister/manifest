@@ -1,29 +1,32 @@
 import {
+  For,
   Show,
-  createSignal,
-  createMemo,
   createEffect,
-  type Component,
+  createMemo,
+  createSignal,
   type Accessor,
+  type Component,
   type Setter,
 } from 'solid-js';
-import { PROVIDERS } from '../services/providers.js';
-import { providerIcon } from './ProviderIcon.js';
 import {
   connectProvider,
   disconnectProvider,
+  getProviderModels,
   refreshProviderModels,
-  type RoutingProvider,
   type AuthType,
+  type AvailableModel,
+  type RoutingProvider,
 } from '../services/api.js';
-import { toast } from '../services/toast-store.js';
 import { formatTimeAgo } from '../services/formatters.js';
-import CopyButton from './CopyButton.js';
-import ProviderKeyForm, { MAX_KEYS_PER_PROVIDER } from './ProviderKeyForm.js';
-import OAuthDetailView from './OAuthDetailView.js';
-import AnthropicOAuthDetailView from './AnthropicOAuthDetailView.js';
-import DeviceCodeDetailView from './DeviceCodeDetailView.js';
 import { getRoutingProviderApiKeyUrl } from '../services/provider-api-key-urls.js';
+import { PROVIDERS } from '../services/providers.js';
+import { toast } from '../services/toast-store.js';
+import AnthropicOAuthDetailView from './AnthropicOAuthDetailView.js';
+import CopyButton from './CopyButton.js';
+import DeviceCodeDetailView from './DeviceCodeDetailView.js';
+import OAuthDetailView from './OAuthDetailView.js';
+import { providerIcon } from './ProviderIcon.js';
+import ProviderKeyForm, { MAX_KEYS_PER_PROVIDER } from './ProviderKeyForm.js';
 import ProviderSubviewHeader, { type ProviderSubviewLayout } from './ProviderSubviewHeader.js';
 
 export interface ProviderDetailViewProps {
@@ -141,9 +144,38 @@ const ProviderDetailView: Component<ProviderDetailViewProps> = (props) => {
   };
 
   const [refreshing, setRefreshing] = createSignal(false);
+  const [providerModels, setProviderModels] = createSignal<AvailableModel[] | null>(null);
 
   const activeProviderRow = () => getProviderByAuth(props.selectedAuthType());
   const lastFetchedAgo = () => formatTimeAgo(activeProviderRow()?.models_fetched_at ?? null);
+
+  const loadProviderModels = async () => {
+    if (!connected()) {
+      setProviderModels(null);
+      return;
+    }
+    try {
+      setProviderModels(
+        await getProviderModels(props.agentName, props.provId, props.selectedAuthType()),
+      );
+    } catch {
+      setProviderModels(null);
+    }
+  };
+
+  createEffect(() => {
+    void (props.agentName, props.provId, props.selectedAuthType(), props.providers);
+    void loadProviderModels();
+  });
+
+  const formatProviderModelPrice = (perToken: number | null | undefined): string => {
+    if (perToken == null) return '–';
+    const perMillion = Number(perToken) * 1_000_000;
+    if (perMillion === 0) return 'Free';
+    if (perMillion < 0.01) return '< $0.01';
+    if (perMillion < 1) return `$${perMillion.toFixed(3)}`;
+    return `$${perMillion.toFixed(2)}`;
+  };
 
   const handleRefreshModels = async () => {
     setRefreshing(true);
@@ -160,6 +192,7 @@ const ProviderDetailView: Component<ProviderDetailViewProps> = (props) => {
       } else {
         toast.error(result.error ?? `Couldn't refresh ${provDef.name}`);
       }
+      await loadProviderModels();
       props.onUpdate();
     } catch {
       // network/server error toast already raised by fetchMutate
@@ -283,6 +316,59 @@ const ProviderDetailView: Component<ProviderDetailViewProps> = (props) => {
             </svg>
             {refreshing() ? 'Refreshing…' : 'Refresh models'}
           </button>
+        </div>
+      </Show>
+
+      <Show when={connected()}>
+        <div class="provider-detail__section">
+          <div class="provider-detail__label">Models</div>
+          <Show
+            when={providerModels()}
+            fallback={<p class="provider-detail__hint">Loading models…</p>}
+          >
+            {(models) => (
+              <>
+                <div class="provider-detail__hint">
+                  {models().length} fetched model{models().length === 1 ? '' : 's'}
+                </div>
+                <div class="provider-model-table">
+                  <div class="provider-model-table__head" aria-hidden="true">
+                    <span>Model name</span>
+                    <span>Input / 1M tokens</span>
+                    <span>Output / 1M tokens</span>
+                  </div>
+                  <For each={models()}>
+                    {(model) => (
+                      <div class="provider-model-table__row">
+                        <span class="provider-model-table__model">
+                          <span class="provider-model-table__label">
+                            {model.display_name || model.model_name}
+                          </span>
+                          <Show
+                            when={model.display_name && model.display_name !== model.model_name}
+                          >
+                            <span class="provider-model-table__id">{model.model_name}</span>
+                          </Show>
+                        </span>
+                        <span class="provider-model-table__cell provider-model-table__cell--price">
+                          <span class="provider-model-table__mobile-label">Input / 1M tokens</span>
+                          <span class="provider-model-table__price">
+                            {formatProviderModelPrice(model.input_price_per_token)}
+                          </span>
+                        </span>
+                        <span class="provider-model-table__cell provider-model-table__cell--price">
+                          <span class="provider-model-table__mobile-label">Output / 1M tokens</span>
+                          <span class="provider-model-table__price">
+                            {formatProviderModelPrice(model.output_price_per_token)}
+                          </span>
+                        </span>
+                      </div>
+                    )}
+                  </For>
+                </div>
+              </>
+            )}
+          </Show>
         </div>
       </Show>
 

@@ -29,11 +29,13 @@ describe('ProviderController', () => {
       removeProvider: jest.fn().mockResolvedValue({ notifications: 0 }),
       renameKey: jest.fn(),
       reorderKeys: jest.fn(),
+      saveProvider: jest.fn().mockImplementation((p) => Promise.resolve(p)),
       deactivateAllProviders: jest.fn().mockResolvedValue(undefined),
       recalculateTiers: jest.fn().mockResolvedValue(undefined),
     };
     mockDiscoveryService = {
       discoverModels: jest.fn().mockResolvedValue([]),
+      invalidate: jest.fn(),
     };
     mockOllamaSync = {
       sync: jest.fn().mockResolvedValue({ count: 0 }),
@@ -215,6 +217,27 @@ describe('ProviderController', () => {
     it('should return empty array when no providers', async () => {
       const result = await controller.getProviders(mockUser, mockAgentName);
       expect(result).toEqual([]);
+    });
+  });
+
+  describe('provider models', () => {
+    it('lists fetched models for the selected auth type', async () => {
+      mockProviderService.getProviders.mockResolvedValue([
+        {
+          provider: 'nvidia',
+          auth_type: 'api_key',
+          is_active: true,
+          cached_models: [{ id: 'nvidia/nemotron', displayName: 'Nemotron' }],
+        },
+      ]);
+
+      const result = await controller.getProviderModels(
+        mockUser,
+        { agentName: 'test-agent', provider: 'nvidia' } as never,
+        { authType: 'api_key' } as never,
+      );
+
+      expect(result.map((m) => m.model_name)).toEqual(['nvidia/nemotron']);
     });
   });
 
