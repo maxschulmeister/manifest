@@ -402,6 +402,10 @@ const Routing: Component = () => {
   const hasProviders = () => activeProviders().length > 0 || (customProviders()?.length ?? 0) > 0;
   const hasOverrides = () => tiers()?.some((t) => t.override_route !== null) ?? false;
 
+  const handleProviderPoll = async () => {
+    await refetchProviders();
+  };
+
   const handleSpecificityOverride = async (
     category: string,
     model: string,
@@ -482,7 +486,7 @@ const Routing: Component = () => {
             request
           </span>
         </div>
-        <Show when={!connectedProviders.loading}>
+        <Show when={connectedProviders.state !== 'pending'}>
           <div style="display: flex; gap: 8px;">
             <Show when={isEnabled()}>
               <button
@@ -804,6 +808,7 @@ const Routing: Component = () => {
         onAddFallback={handleAddFallback}
         onAddHeaderTierFallback={handleAddHeaderTierFallback}
         onProviderUpdate={refetchAll}
+        onProviderPoll={handleProviderPoll}
       />
     </div>
   );

@@ -29,3 +29,6 @@ coverage/
 .understand-anything/
 scripts/.env.verify
 scripts/verify-free-model-ids.sh
+# Superpowers-generated markdown (plans, brainstorms, specs)
+docs/superpowers/
+docs/plans/

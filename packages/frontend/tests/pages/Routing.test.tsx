@@ -147,6 +147,7 @@ vi.mock('../../src/components/RoutingModals.js', () => ({
       props.customProviders,
       props.connectedProviders,
       props.headerTiers,
+      props.onProviderPoll,
     ];
     void _read;
     return (
@@ -234,6 +235,12 @@ vi.mock('../../src/components/RoutingModals.js', () => ({
           onClick={() => (props.onProviderUpdate as () => Promise<void>)?.()}
         >
           provider-update
+        </button>
+        <button
+          data-testid="modal-trigger-provider-poll"
+          onClick={() => (props.onProviderPoll as () => Promise<void>)?.()}
+        >
+          provider-poll
         </button>
         <button
           data-testid="modal-trigger-instruction-close"
@@ -859,6 +866,17 @@ describe('Routing page', () => {
     await waitFor(() => {
       const link = container.querySelector('a[href="/agents/demo/providers"]');
       expect(link?.textContent?.trim()).toBe('Connect providers');
+    });
+  });
+
+  it('provides a lightweight onProviderPoll that only refetches providers', async () => {
+    render(() => <Routing />);
+    await waitFor(() => {
+      expect(screen.getByTestId('modal-trigger-provider-poll')).toBeDefined();
+    });
+    fireEvent.click(screen.getByTestId('modal-trigger-provider-poll'));
+    await waitFor(() => {
+      expect(mockGetProviders).toHaveBeenCalled();
     });
   });
 

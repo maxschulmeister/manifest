@@ -10,7 +10,16 @@ export const SUBSCRIPTION_PROVIDER_CONFIGS: Readonly<
     subscriptionKeyPlaceholder: 'Paste your setup-token',
     subscriptionCommand: 'claude setup-token',
     subscriptionTokenPrefix: 'sk-ant-oat',
-    knownModels: Object.freeze(['claude-opus-4', 'claude-sonnet-4', 'claude-haiku-4']),
+    knownModels: Object.freeze([
+      'claude-fable-5',
+      'claude-opus-4',
+      'claude-sonnet-4',
+      'claude-haiku-4',
+    ]),
+    // `claude-*-fast` ids exist in the OpenRouter pricing cache but 404 at
+    // api.anthropic.com — fast mode is an `anthropic-beta` header on the base
+    // Opus model, not a distinct model id. Keep them out of the catalog.
+    knownModelsExclude: Object.freeze(['-fast']),
     subscriptionCapabilities: Object.freeze({
       maxContextWindow: 200000,
       supportsPromptCaching: false,
@@ -57,6 +66,7 @@ export const SUBSCRIPTION_PROVIDER_CONFIGS: Readonly<
     subscriptionLabel: 'MiniMax Coding Plan',
     subscriptionAuthMode: 'device_code' as const,
     knownModels: Object.freeze([
+      'MiniMax-M3',
       'MiniMax-M2.7',
       'MiniMax-M2.7-highspeed',
       'MiniMax-M2.5',
@@ -66,7 +76,9 @@ export const SUBSCRIPTION_PROVIDER_CONFIGS: Readonly<
       'MiniMax-M2',
     ]),
     subscriptionCapabilities: Object.freeze({
-      maxContextWindow: 200000,
+      // MiniMax-M3's 1M window (MSA); M2.x models keep their own lower
+      // per-model contexts from the pricing cache — this is only the cap.
+      maxContextWindow: 1000000,
       supportsPromptCaching: false,
       supportsBatching: false,
     }),

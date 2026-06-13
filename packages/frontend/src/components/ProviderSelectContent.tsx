@@ -34,6 +34,7 @@ export interface ProviderSelectContentProps {
   customProviderPrefill?: CustomProviderPrefill | null;
   providerDeepLink?: ProviderDeepLink | null;
   onUpdate: () => void | Promise<void>;
+  onPollProviders?: () => void | Promise<void>;
   onClose?: () => void;
   showHeader?: boolean;
   showFooter?: boolean;
@@ -675,6 +676,7 @@ const ProviderSelectContent: Component<ProviderSelectContentProps> = (props) => 
             setValidationError={setValidationError}
             onBack={goBack}
             onUpdate={props.onUpdate}
+            onPollProviders={props.onPollProviders}
             onClose={closeHandler()}
             initialAddKey={addKeyIntent()}
             layout={subviewLayout()}

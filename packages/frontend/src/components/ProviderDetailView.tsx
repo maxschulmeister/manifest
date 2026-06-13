@@ -44,6 +44,7 @@ export interface ProviderDetailViewProps {
   setValidationError: Setter<string | null>;
   onBack: () => void;
   onUpdate: () => void;
+  onPollProviders?: () => void | Promise<void>;
   onClose: () => void;
   initialAddKey?: boolean;
   layout?: ProviderSubviewLayout;
@@ -468,6 +469,7 @@ const ProviderDetailView: Component<ProviderDetailViewProps> = (props) => {
           setBusy={props.setBusy}
           onBack={props.onBack}
           onUpdate={props.onUpdate}
+          onPollProviders={props.onPollProviders}
           onClose={props.onClose}
           addKeyOpen={addKeyOpen}
           setAddKeyOpen={setAddKeyOpen}

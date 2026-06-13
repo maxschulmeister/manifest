@@ -64,6 +64,7 @@ interface RoutingModalsProps {
   ) => void;
   onAddHeaderTierFallback: (tierId: string, headerTierId: string) => void;
   onProviderUpdate: () => Promise<void>;
+  onProviderPoll?: () => Promise<void>;
 }
 
 interface PendingOverride {
