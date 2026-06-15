@@ -46,6 +46,11 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://myuser:mypassword@localhost:5432/mydatabase
+      # The e2e harness drops every table on startup; CI's Postgres is an
+      # ephemeral service container, so this is safe here. The guard in
+      # src/database/e2e-db-guard.ts requires this opt-in to prevent local
+      # runs from wiping a dev database.
+      ALLOW_E2E_DROP_SCHEMA: "1"
       BETTER_AUTH_SECRET: ci-test-secret-at-least-32-characters-long!!
       NODE_ENV: test
 

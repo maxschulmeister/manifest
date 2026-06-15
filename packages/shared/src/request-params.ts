@@ -22,19 +22,27 @@ export function applyRequestParamDefaults<T extends Record<string, unknown>>(
   body: T,
   defaults: RequestParamDefaults | null | undefined,
   specs: readonly ProviderParamSpec[],
+  options: { passthroughUnknown?: boolean } = {},
 ): T {
   const orderedSpecs = [...specs].sort(compareProviderParamSpecs);
   if (!defaults) return omitProviderInapplicableParams(body, orderedSpecs);
 
   const expanded = expandConfiguredParamDefaults(defaults, orderedSpecs);
-  let merged: Record<string, unknown> = {};
+  let knownDefaults: Record<string, unknown> = {};
   for (const spec of orderedSpecs) {
     if (!providerParamIsApplicable(spec, expanded)) continue;
     if (!hasPath(expanded, spec.path)) continue;
-    merged = setProviderParamValue(merged, spec.path, getPath(expanded, spec.path) as JsonValue);
+    knownDefaults = setProviderParamValue(
+      knownDefaults,
+      spec.path,
+      getPath(expanded, spec.path) as JsonValue,
+    );
   }
 
-  return omitProviderInapplicableParams(deepMerge(body, merged), orderedSpecs) as T;
+  const mergedDefaults = options.passthroughUnknown
+    ? deepMerge(defaults, knownDefaults)
+    : knownDefaults;
+  return omitProviderInapplicableParams(deepMerge(body, mergedDefaults), orderedSpecs) as T;
 }
 
 function deepMerge(

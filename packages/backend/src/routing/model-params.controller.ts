@@ -50,8 +50,24 @@ export class ModelParamsController {
     @Param() params: AgentNameParamDto,
     @Query() query: ModelParamSpecsQueryDto,
   ): Promise<readonly ProviderParamSpec[]> {
+    const agent = await this.resolveAgentService.resolve(user.id, params.agentName);
+    return this.providerParamSpecs.getSpecsForRoute(
+      agent.id,
+      query.provider,
+      query.authType,
+      query.model,
+    );
+  }
+
+  /** Specs for a modelparams.dev catalog identity, not the current route. */
+  @Get(':agentName/model-param-specs/catalog/by-model')
+  async catalogSpecsByModel(
+    @CurrentUser() user: AuthUser,
+    @Param() params: AgentNameParamDto,
+    @Query() query: ModelParamSpecsQueryDto,
+  ): Promise<readonly ProviderParamSpec[]> {
     await this.resolveAgentService.resolve(user.id, params.agentName);
-    return this.providerParamSpecs.getSpecs(query.provider, query.authType, query.model);
+    return this.providerParamSpecs.getCatalogSpecs(query.provider, query.authType, query.model);
   }
 
   /**
@@ -106,6 +122,7 @@ export class ModelParamsController {
   ) {
     const agent = await this.resolveAgentService.resolve(user.id, params.agentName);
     const sanitized = await this.assertCompatibleParams(
+      agent.id,
       body.provider,
       body.authType,
       body.model,
@@ -166,6 +183,7 @@ export class ModelParamsController {
    * this method does not need to change.
    */
   private async assertCompatibleParams(
+    agentId: string,
     provider: string,
     authType: AuthType,
     model: string,
@@ -177,7 +195,12 @@ export class ModelParamsController {
     if (keys.length === 0) {
       throw new BadRequestException('params must contain at least one configurable field');
     }
-    const specs = await this.providerParamSpecs.getSpecs(provider, authType, model);
+    const specs = await this.providerParamSpecs.getSpecsForRoute(
+      agentId,
+      provider,
+      authType,
+      model,
+    );
     const out = pickProviderCompatibleParams(params, specs);
     if (Object.keys(out).length === 0) {
       throw new BadRequestException(

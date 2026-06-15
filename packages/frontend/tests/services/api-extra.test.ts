@@ -8,6 +8,9 @@ import {
   deleteCustomProvider,
   updateCustomProvider,
   createCustomProvider,
+  addManualModel,
+  updateManualModelSettings,
+  removeManualModel,
 } from '../../src/services/api/routing.js';
 import {
   setSpecificityFallbacks,
@@ -212,5 +215,48 @@ describe('api/specificity', () => {
     const [url, init] = mockFetch.mock.calls[0];
     expect(url).toBe('/api/v1/routing/demo-agent/specificity/reset-all');
     expect(init.method).toBe('POST');
+  });
+});
+
+describe('api/routing manual models', () => {
+  it('addManualModel POSTs a new manual model to the connection', async () => {
+    mockOk({ model_name: 'claude-secret' });
+    const out = await addManualModel('demo-agent', 'anthropic', 'api_key', {
+      model_name: 'claude-secret',
+    });
+    expect(out).toEqual({ model_name: 'claude-secret' });
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe(
+      '/api/v1/routing/demo-agent/providers/anthropic/manual-models?authType=api_key',
+    );
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(init.body)).toEqual({ model_name: 'claude-secret' });
+  });
+
+  it('updateManualModelSettings PATCHes parameter metadata for a manual model', async () => {
+    mockOk({ model_name: 'claude-secret' });
+    await updateManualModelSettings('demo-agent', 'anthropic', 'api_key', 'claude-secret', {
+      param_schema_ref: { provider: 'anthropic', authType: 'api_key', model: 'claude-opus' },
+      param_defaults: { temperature: 0.2 },
+    });
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe(
+      '/api/v1/routing/demo-agent/providers/anthropic/manual-models/claude-secret?authType=api_key',
+    );
+    expect(init.method).toBe('PATCH');
+    expect(JSON.parse(init.body)).toEqual({
+      param_schema_ref: { provider: 'anthropic', authType: 'api_key', model: 'claude-opus' },
+      param_defaults: { temperature: 0.2 },
+    });
+  });
+
+  it('removeManualModel DELETEs a manual model from the connection', async () => {
+    mockOk({ ok: true });
+    await removeManualModel('demo-agent', 'anthropic', 'api_key', 'claude-secret');
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toBe(
+      '/api/v1/routing/demo-agent/providers/anthropic/manual-models/claude-secret?authType=api_key',
+    );
+    expect(init.method).toBe('DELETE');
   });
 });

@@ -48,6 +48,7 @@ import { PlaygroundModule } from '../src/playground/playground.module';
 import { CommonModule } from '../src/common/common.module';
 import { PublicStatsModule } from '../src/public-stats/public-stats.module';
 import { SetupModule } from '../src/setup/setup.module';
+import { resolveE2eDatabaseConfig } from '../src/database/e2e-db-guard';
 
 export const TEST_USER_ID = 'test-user-001';
 export const TEST_API_KEY = 'test-api-key-001';
@@ -137,12 +138,17 @@ const OPENROUTER_MODELS_FIXTURE = {
 } as const;
 
 function buildTypeOrmConfig(): TypeOrmModuleOptions {
+  // resolveE2eDatabaseConfig() refuses to return unless DATABASE_URL and
+  // ALLOW_E2E_DROP_SCHEMA are both explicitly set, so the harness can never
+  // silently drop tables from the dev database via the old `mydatabase`
+  // default. See src/database/e2e-db-guard.ts for the full rationale.
+  const { url, dropSchema } = resolveE2eDatabaseConfig();
   return {
     type: 'postgres' as const,
-    url: process.env['DATABASE_URL'] ?? 'postgresql://myuser:mypassword@localhost:5432/mydatabase',
+    url,
     entities,
     synchronize: true,
-    dropSchema: true,
+    dropSchema,
     logging: false,
   };
 }

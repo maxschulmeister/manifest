@@ -13,11 +13,28 @@ import {
   disconnectProvider,
   getProviderModels,
   refreshProviderModels,
+  addManualModel,
+  updateManualModelSettings,
+  removeManualModel,
   type AuthType,
   type AvailableModel,
+  type ParamSchemaRef,
   type RoutingProvider,
 } from '../services/api.js';
+import {
+  getCatalogModelParamSpecs,
+  listModelParamSpecIndex,
+  type ModelParamSpecId,
+} from '../services/api/model-params.js';
+import {
+  compareProviderParamSpecs,
+  providerParamIsApplicable,
+  setProviderParamValue,
+  type ProviderParamSpec,
+  type RequestParamDefaults,
+} from 'manifest-shared';
 import { formatTimeAgo } from '../services/formatters.js';
+import { highlight } from '../services/syntax-highlight.js';
 import { getRoutingProviderApiKeyUrl } from '../services/provider-api-key-urls.js';
 import { PROVIDERS } from '../services/providers.js';
 import { toast } from '../services/toast-store.js';
@@ -28,6 +45,7 @@ import OAuthDetailView from './OAuthDetailView.js';
 import { providerIcon } from './ProviderIcon.js';
 import ProviderKeyForm, { MAX_KEYS_PER_PROVIDER } from './ProviderKeyForm.js';
 import ProviderSubviewHeader, { type ProviderSubviewLayout } from './ProviderSubviewHeader.js';
+import ModelSelectDropdown, { type ModelSelectDropdownItem } from './ModelSelectDropdown.js';
 
 export interface ProviderDetailViewProps {
   provId: string;
@@ -105,6 +123,24 @@ const ProviderDetailView: Component<ProviderDetailViewProps> = (props) => {
 
   const [addKeyOpen, setAddKeyOpen] = createSignal(false);
 
+  const [manualName, setManualName] = createSignal('');
+  const [manualInputPrice, setManualInputPrice] = createSignal('');
+  const [manualOutputPrice, setManualOutputPrice] = createSignal('');
+  const [paramSpecOptions, setParamSpecOptions] = createSignal<ModelParamSpecId[]>([]);
+  const [paramSpecOptionsLoaded, setParamSpecOptionsLoaded] = createSignal(false);
+  const [addingModel, setAddingModel] = createSignal(false);
+  const [manualModelError, setManualModelError] = createSignal<string | null>(null);
+  const [settingsModel, setSettingsModel] = createSignal<AvailableModel | null>(null);
+  const [settingsSchemaValue, setSettingsSchemaValue] = createSignal('');
+  const [settingsJson, setSettingsJson] = createSignal('{}');
+  const [settingsSchemaKeySignature, setSettingsSchemaKeySignature] = createSignal<string | null>(
+    null,
+  );
+  const [settingsError, setSettingsError] = createSignal<string | null>(null);
+  const [settingsSaving, setSettingsSaving] = createSignal(false);
+  let modelsScrollRef: HTMLDivElement | undefined;
+  let jsonHighlightRef: HTMLPreElement | undefined;
+
   createEffect(() => {
     if (props.initialAddKey) setAddKeyOpen(true);
   });
@@ -169,6 +205,126 @@ const ProviderDetailView: Component<ProviderDetailViewProps> = (props) => {
     void loadProviderModels();
   });
 
+  const schemaValue = (ref: ParamSchemaRef): string =>
+    `${ref.provider}\t${ref.authType}\t${ref.model}`;
+
+  const selectedSettingsParamSchemaRef = (): ParamSchemaRef | null => {
+    const raw = settingsSchemaValue();
+    if (!raw) return null;
+    const [provider, authType, model] = raw.split('\t');
+    if (!provider || !authType || !model) return null;
+    return { provider, authType: authType as AuthType, model };
+  };
+
+  const paramSchemaOptions = (): ModelSelectDropdownItem[] =>
+    paramSpecOptions().map((item) => ({
+      value: schemaValue(item),
+      label: item.model,
+      provider: item.provider,
+      providerId: item.provider,
+    }));
+
+  const requestParamDefaultsFromSpecs = (
+    specs: readonly ProviderParamSpec[],
+  ): RequestParamDefaults | null => {
+    let out: RequestParamDefaults = {};
+    for (const spec of [...specs].sort(compareProviderParamSpecs)) {
+      if (spec.default === undefined) continue;
+      if (!providerParamIsApplicable(spec, out)) continue;
+      out = setProviderParamValue(out, spec.path, spec.default);
+    }
+    return Object.keys(out).length > 0 ? out : null;
+  };
+
+  const keySignature = (value: RequestParamDefaults | null): string => {
+    const paths: string[] = [];
+    const visit = (item: unknown, prefix: string): void => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return;
+      for (const key of Object.keys(item as Record<string, unknown>).sort()) {
+        const path = prefix ? `${prefix}.${key}` : key;
+        paths.push(path);
+        visit((item as Record<string, unknown>)[key], path);
+      }
+    };
+    visit(value ?? {}, '');
+    return paths.join('\n');
+  };
+
+  const parseSettingsJsonLenient = (): RequestParamDefaults | null | undefined => {
+    try {
+      const parsed = JSON.parse(settingsJson().trim() || '{}') as unknown;
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
+      return Object.keys(parsed).length === 0 ? null : (parsed as RequestParamDefaults);
+    } catch {
+      return undefined;
+    }
+  };
+
+  const loadSchemaDefaults = async (
+    ref: ParamSchemaRef,
+    options: { applyJson?: boolean } = { applyJson: true },
+  ): Promise<void> => {
+    try {
+      const specs = await getCatalogModelParamSpecs(
+        props.agentName,
+        ref.provider,
+        ref.authType,
+        ref.model,
+      );
+      const defaults = requestParamDefaultsFromSpecs(specs);
+      setSettingsSchemaKeySignature(keySignature(defaults));
+      if (options.applyJson !== false) {
+        setSettingsJson(defaults ? JSON.stringify(defaults, null, 2) : '{}');
+      }
+      setSettingsError(null);
+    } catch {
+      toast.error(`Couldn't load defaults for ${ref.model}`);
+    }
+  };
+
+  const handleSettingsSchemaSelect = (value: string): void => {
+    setSettingsSchemaValue(value);
+    setSettingsSchemaKeySignature(null);
+    const [provider, authType, model] = value.split('\t');
+    if (!provider || !authType || !model) return;
+    void loadSchemaDefaults({ provider, authType: authType as AuthType, model });
+  };
+
+  const settingsJsonHasCustomKeys = () => {
+    const current = parseSettingsJsonLenient();
+    if (current === undefined) return false;
+    const ref = selectedSettingsParamSchemaRef();
+    if (!ref) return keySignature(current) !== '';
+    const schemaSignature = settingsSchemaKeySignature();
+    return schemaSignature !== null && keySignature(current) !== schemaSignature;
+  };
+
+  const selectedSchemaLabel = () => {
+    if (settingsJsonHasCustomKeys()) return 'custom';
+    const selected = settingsSchemaValue();
+    return (
+      paramSchemaOptions().find((item) => item.value === selected)?.label ??
+      selectedSettingsParamSchemaRef()?.model ??
+      null
+    );
+  };
+
+  const loadParamSpecOptions = async () => {
+    if (!connected() || paramSpecOptionsLoaded()) return;
+    try {
+      setParamSpecOptions(await listModelParamSpecIndex(props.agentName));
+    } catch {
+      setParamSpecOptions([]);
+    } finally {
+      setParamSpecOptionsLoaded(true);
+    }
+  };
+
+  createEffect(() => {
+    void (props.agentName, props.provId, props.selectedAuthType(), connected());
+    void loadParamSpecOptions();
+  });
+
   const formatProviderModelPrice = (perToken: number | null | undefined): string => {
     if (perToken == null) return '–';
     const perMillion = Number(perToken) * 1_000_000;
@@ -199,6 +355,128 @@ const ProviderDetailView: Component<ProviderDetailViewProps> = (props) => {
       // network/server error toast already raised by fetchMutate
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  const parsePrice = (value: string): number | null => {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number(trimmed.replace(',', '.'));
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+  };
+
+  const highlightedJson = createMemo(() => highlight(settingsJson() || ' ', 'json'));
+
+  const parseSettingsJson = (): RequestParamDefaults | null => {
+    const raw = settingsJson().trim();
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('Parameter JSON must be an object.');
+    }
+    return Object.keys(parsed).length === 0 ? null : (parsed as RequestParamDefaults);
+  };
+
+  const scrollToBottomOfModels = () =>
+    requestAnimationFrame(() => {
+      if (modelsScrollRef) modelsScrollRef.scrollTop = modelsScrollRef.scrollHeight;
+    });
+
+  const handleAddManualModel = async () => {
+    const name = manualName().trim();
+    if (!name) return;
+    const inputPrice = parsePrice(manualInputPrice());
+    const outputPrice = parsePrice(manualOutputPrice());
+    if (
+      (manualInputPrice().trim() && inputPrice === null) ||
+      (manualOutputPrice().trim() && outputPrice === null)
+    ) {
+      setManualModelError('Prices must be valid non-negative numbers.');
+      return;
+    }
+    setManualModelError(null);
+    setAddingModel(true);
+    try {
+      await addManualModel(props.agentName, props.provId, props.selectedAuthType(), {
+        model_name: name,
+        ...(inputPrice !== null ? { input_price_per_million_tokens: inputPrice } : {}),
+        ...(outputPrice !== null ? { output_price_per_million_tokens: outputPrice } : {}),
+      });
+      toast.success(`Added ${name} to ${provDef.name}`);
+      setManualName('');
+      setManualInputPrice('');
+      setManualOutputPrice('');
+      setManualModelError(null);
+      await loadProviderModels();
+      props.onUpdate();
+      scrollToBottomOfModels();
+    } catch {
+      // error toast from fetchMutate
+    } finally {
+      setAddingModel(false);
+    }
+  };
+
+  const openManualModelSettings = (model: AvailableModel) => {
+    setSettingsModel(model);
+    setSettingsSchemaValue(model.param_schema_ref ? schemaValue(model.param_schema_ref) : '');
+    setSettingsSchemaKeySignature(null);
+    setSettingsJson(JSON.stringify(model.param_defaults ?? {}, null, 2));
+    setSettingsError(null);
+    void loadParamSpecOptions();
+    if (model.param_schema_ref) {
+      void loadSchemaDefaults(model.param_schema_ref, { applyJson: false });
+    }
+  };
+
+  const closeManualModelSettings = () => {
+    if (settingsSaving()) return;
+    setSettingsModel(null);
+    setSettingsError(null);
+  };
+
+  const handleSaveManualModelSettings = async () => {
+    const model = settingsModel();
+    if (!model || settingsSaving()) return;
+    setSettingsError(null);
+    let paramDefaults: RequestParamDefaults | null;
+    try {
+      paramDefaults = parseSettingsJson();
+    } catch (err) {
+      setSettingsError(err instanceof Error ? err.message : 'Invalid JSON.');
+      return;
+    }
+
+    setSettingsSaving(true);
+    try {
+      await updateManualModelSettings(
+        props.agentName,
+        props.provId,
+        props.selectedAuthType(),
+        model.model_name,
+        {
+          param_schema_ref: selectedSettingsParamSchemaRef(),
+          param_defaults: paramDefaults,
+        },
+      );
+      toast.success(`Updated ${model.model_name} parameters`);
+      await loadProviderModels();
+      props.onUpdate();
+      setSettingsModel(null);
+    } catch {
+      // error toast from fetchMutate
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
+
+  const handleRemoveManualModel = async (modelId: string) => {
+    try {
+      await removeManualModel(props.agentName, props.provId, props.selectedAuthType(), modelId);
+      await loadProviderModels();
+      props.onUpdate();
+    } catch {
+      // error toast from fetchMutate
     }
   };
 
@@ -332,7 +610,7 @@ const ProviderDetailView: Component<ProviderDetailViewProps> = (props) => {
                 <div class="provider-detail__hint">
                   {models().length} fetched model{models().length === 1 ? '' : 's'}
                 </div>
-                <div class="provider-model-table">
+                <div class="provider-model-table" ref={modelsScrollRef}>
                   <div class="provider-model-table__head" aria-hidden="true">
                     <span>Model name</span>
                     <span>Input / 1M tokens</span>
@@ -343,12 +621,67 @@ const ProviderDetailView: Component<ProviderDetailViewProps> = (props) => {
                       <div class="provider-model-table__row">
                         <span class="provider-model-table__model">
                           <span class="provider-model-table__label">
-                            {model.display_name || model.model_name}
+                            {model.manual
+                              ? model.model_name
+                              : model.display_name || model.model_name}
                           </span>
                           <Show
-                            when={model.display_name && model.display_name !== model.model_name}
+                            when={
+                              !model.manual &&
+                              model.display_name &&
+                              model.display_name !== model.model_name
+                            }
                           >
                             <span class="provider-model-table__id">{model.model_name}</span>
+                          </Show>
+                          <Show when={model.manual}>
+                            <span
+                              class="provider-model-table__manual-badge"
+                              title="You added this model; it isn’t returned by the provider’s /models endpoint"
+                            >
+                              Custom
+                            </span>
+                          </Show>
+                          <Show when={model.manual}>
+                            <button
+                              type="button"
+                              class="provider-model-table__settings-btn"
+                              aria-label={`Configure ${model.model_name} parameters`}
+                              title={`Configure ${model.model_name} parameters`}
+                              onClick={() => openManualModelSettings(model)}
+                            >
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="14"
+                                height="14"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                viewBox="0 0 24 24"
+                                aria-hidden="true"
+                              >
+                                <line x1="4" y1="21" x2="4" y2="14" />
+                                <line x1="4" y1="10" x2="4" y2="3" />
+                                <line x1="12" y1="21" x2="12" y2="12" />
+                                <line x1="12" y1="8" x2="12" y2="3" />
+                                <line x1="20" y1="21" x2="20" y2="16" />
+                                <line x1="20" y1="12" x2="20" y2="3" />
+                                <line x1="1" y1="14" x2="7" y2="14" />
+                                <line x1="9" y1="8" x2="15" y2="8" />
+                                <line x1="17" y1="16" x2="23" y2="16" />
+                              </svg>
+                            </button>
+                            <button
+                              type="button"
+                              class="provider-model-table__remove-btn"
+                              aria-label={`Remove ${model.model_name} from ${provDef.name}`}
+                              title={`Remove ${model.model_name} from ${provDef.name}`}
+                              onClick={() => handleRemoveManualModel(model.model_name)}
+                            >
+                              ×
+                            </button>
                           </Show>
                         </span>
                         <span class="provider-model-table__cell provider-model-table__cell--price">
@@ -370,7 +703,186 @@ const ProviderDetailView: Component<ProviderDetailViewProps> = (props) => {
               </>
             )}
           </Show>
+          <div class="provider-model-add">
+            <div class="custom-provider-model-row">
+              <input
+                class="provider-detail__input custom-provider-model-row__name"
+                type="text"
+                placeholder="Model name"
+                aria-label="Manual model name"
+                value={manualName()}
+                onInput={(e) => {
+                  setManualName(e.currentTarget.value);
+                  setManualModelError(null);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && manualName().trim()) {
+                    e.preventDefault();
+                    void handleAddManualModel();
+                  }
+                }}
+              />
+              <input
+                class="provider-detail__input custom-provider-model-row__price"
+                type="text"
+                inputmode="decimal"
+                placeholder="$/M in"
+                aria-label="Input price per million tokens"
+                value={manualInputPrice()}
+                onInput={(e) => {
+                  setManualInputPrice(e.currentTarget.value);
+                  setManualModelError(null);
+                }}
+              />
+              <input
+                class="provider-detail__input custom-provider-model-row__price"
+                type="text"
+                inputmode="decimal"
+                placeholder="$/M out"
+                aria-label="Output price per million tokens"
+                value={manualOutputPrice()}
+                onInput={(e) => {
+                  setManualOutputPrice(e.currentTarget.value);
+                  setManualModelError(null);
+                }}
+              />
+            </div>
+            <Show when={manualModelError()}>
+              {(message) => (
+                <div class="provider-detail__error provider-model-add__error" role="alert">
+                  {message()}
+                </div>
+              )}
+            </Show>
+            <button
+              type="button"
+              class="btn btn--outline btn--sm provider-model-add__btn"
+              disabled={addingModel() || !manualName().trim()}
+              onClick={handleAddManualModel}
+            >
+              {addingModel() ? <span class="spinner" /> : '+ Add model'}
+            </button>
+          </div>
         </div>
+      </Show>
+
+      <Show when={settingsModel()}>
+        {(model) => (
+          <div
+            class="modal-overlay"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) closeManualModelSettings();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') closeManualModelSettings();
+            }}
+          >
+            <div
+              class="modal-card manual-model-settings"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="manual-model-settings-title"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h2 class="modal-card__title" id="manual-model-settings-title">
+                Model parameters
+              </h2>
+              <p class="modal-card__desc">
+                Configure raw request JSON for {model().model_name}. These defaults are merged into
+                requests before provider-specific routing params.
+              </p>
+
+              <div class="manual-model-settings__section">
+                <div class="manual-model-settings__section-head">
+                  <label class="provider-detail__label">Parameter schema source</label>
+                  <button
+                    type="button"
+                    class="btn btn--ghost btn--sm manual-model-settings__clear-schema"
+                    onClick={() => {
+                      setSettingsSchemaValue('');
+                      setSettingsSchemaKeySignature(null);
+                    }}
+                    disabled={!settingsSchemaValue() || settingsSaving()}
+                  >
+                    No schema
+                  </button>
+                </div>
+                <ModelSelectDropdown
+                  selectedValue={settingsSchemaValue() || null}
+                  selectedLabel={selectedSchemaLabel()}
+                  items={paramSchemaOptions()}
+                  loading={!paramSpecOptionsLoaded()}
+                  placeholder="Search models..."
+                  emptyLabel="No matching modelparams.dev schemas."
+                  requireSearch
+                  showSublabel={false}
+                  compact
+                  showGroupHeaders={false}
+                  onSelect={handleSettingsSchemaSelect}
+                />
+              </div>
+
+              <div class="manual-model-settings__section">
+                <label class="provider-detail__label" for="manual-model-settings-json">
+                  Custom JSON
+                </label>
+                <div class="manual-model-settings__json-editor">
+                  <pre
+                    ref={jsonHighlightRef}
+                    class="manual-model-settings__highlight hljs"
+                    aria-hidden="true"
+                  >
+                    <code innerHTML={highlightedJson()} />
+                  </pre>
+                  <textarea
+                    id="manual-model-settings-json"
+                    class="manual-model-settings__textarea"
+                    aria-label="Custom parameter JSON"
+                    spellcheck={false}
+                    value={settingsJson()}
+                    disabled={settingsSaving()}
+                    onInput={(e) => {
+                      setSettingsJson(e.currentTarget.value);
+                      setSettingsError(null);
+                    }}
+                    onScroll={(e) => {
+                      if (jsonHighlightRef) {
+                        jsonHighlightRef.scrollTop = e.currentTarget.scrollTop;
+                        jsonHighlightRef.scrollLeft = e.currentTarget.scrollLeft;
+                      }
+                    }}
+                  />
+                </div>
+                <Show when={settingsError()}>
+                  {(message) => (
+                    <div class="provider-detail__error manual-model-settings__error" role="alert">
+                      {message()}
+                    </div>
+                  )}
+                </Show>
+              </div>
+
+              <div class="modal-card__footer manual-model-settings__footer">
+                <button
+                  class="btn btn--ghost btn--sm"
+                  type="button"
+                  onClick={closeManualModelSettings}
+                  disabled={settingsSaving()}
+                >
+                  Cancel
+                </button>
+                <button
+                  class="btn btn--primary btn--sm"
+                  type="button"
+                  onClick={handleSaveManualModelSettings}
+                  disabled={settingsSaving()}
+                >
+                  {settingsSaving() ? <span class="spinner" /> : 'Save'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </Show>
 
       {/* Subscription sign-in URL instruction (token mode with external sign-in) */}

@@ -36,6 +36,7 @@ async function renderAndWait(props?: Partial<{ selectedValue: string | null; onS
 
 describe("ModelSelectDropdown", () => {
   beforeEach(() => {
+    mockGetModelPrices.mockReset();
     mockGetModelPrices.mockResolvedValue(testModels);
   });
 
@@ -123,6 +124,45 @@ describe("ModelSelectDropdown", () => {
     expect(container.querySelector(".routing-modal__empty")?.textContent).toContain("No models match");
   });
 
+  it("can render caller-provided modelparams.dev items after search without fetching prices", () => {
+    const onSelect = vi.fn();
+    const { container } = render(() => (
+      <ModelSelectDropdown
+        selectedValue={null}
+        onSelect={onSelect}
+        items={[
+          {
+            value: "zai\tapi_key\tglm-5.1",
+            label: "glm-5.1",
+            sublabel: "zai · api_key",
+            provider: "zai",
+            providerId: "zai",
+          },
+        ]}
+        placeholder="Search models..."
+        requireSearch
+        showSublabel={false}
+        compact
+        showGroupHeaders={false}
+      />
+    ));
+
+    expect(mockGetModelPrices).not.toHaveBeenCalled();
+    expect(container.querySelector(".routing-modal__search")?.getAttribute("placeholder")).toBe(
+      "Search models...",
+    );
+    expect(container.textContent).not.toContain("Start typing to search modelparams.dev.");
+    expect(container.querySelector(".routing-modal__list")).toBeNull();
+    expect(screen.queryByText("glm-5.1")).toBeNull();
+    fireEvent.input(container.querySelector(".routing-modal__search") as HTMLInputElement, {
+      target: { value: "glm 5" },
+    });
+    expect(container.textContent).not.toContain("zai · api_key");
+    expect(container.textContent).not.toContain("zai");
+    fireEvent.click(screen.getByText("glm-5.1"));
+    expect(onSelect).toHaveBeenCalledWith("zai\tapi_key\tglm-5.1", "glm-5.1");
+  });
+
   it("shows loading state while fetching", () => {
     mockGetModelPrices.mockReturnValue(new Promise(() => {}));
     const { container } = render(() => (
@@ -148,14 +188,7 @@ describe("ModelSelectDropdown", () => {
       <ModelSelectDropdown selectedValue="openai/gpt-4o" onSelect={onSelect} />
     ));
 
-    // Wait for data to load, then select a model to close the picker
-    await vi.waitFor(() => {
-      expect(container2.querySelector(".routing-modal__list")).not.toBeNull();
-    });
-    const btns2 = container2.querySelectorAll(".routing-modal__model");
-    fireEvent.click(btns2[0]!);
-
-    // Now the selected display should be visible
+    // A preselected value starts collapsed.
     await vi.waitFor(() => {
       expect(container2.querySelector(".routing-modal__selected-display")).not.toBeNull();
     });

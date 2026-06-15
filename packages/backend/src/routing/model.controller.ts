@@ -149,6 +149,9 @@ export class ModelController {
           ...(isCustom && {
             provider_display_name: cpNameMap.get(m.provider) ?? m.provider,
           }),
+          ...(m.manual ? { manual: true } : {}),
+          ...(m.paramSchemaRef ? { param_schema_ref: m.paramSchemaRef } : {}),
+          ...(m.paramDefaults ? { param_defaults: m.paramDefaults } : {}),
         };
       }),
     );

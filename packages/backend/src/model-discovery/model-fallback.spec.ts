@@ -3,9 +3,11 @@ import {
   buildModelsDevFallback,
   buildSubscriptionFallbackModels,
   supplementWithKnownModels,
+  supplementWithManualModels,
   findOpenRouterPrefix,
   lookupWithVariants,
 } from './model-fallback';
+import type { DiscoveredModel } from './model-fetcher';
 
 function makePricingSync(
   entries: Map<
@@ -561,6 +563,109 @@ describe('supplementWithKnownModels', () => {
 
     expect(ids).toContain('gemini-3.1-flash-lite');
     expect(ids).toContain('gemini-3.1-flash-lite-preview');
+  });
+});
+
+describe('supplementWithManualModels', () => {
+  it('returns the discovered list unchanged when there are no manual models', () => {
+    const raw: DiscoveredModel[] = [
+      {
+        id: 'gpt-4o',
+        displayName: 'GPT-4o',
+        provider: 'openai',
+        contextWindow: 128000,
+        inputPricePerToken: 0.000005,
+        outputPricePerToken: 0.000015,
+        capabilityReasoning: false,
+        capabilityCode: true,
+        qualityScore: 4,
+      },
+    ];
+
+    expect(supplementWithManualModels(raw, null, 'openai')).toBe(raw);
+    expect(supplementWithManualModels(raw, [], 'openai')).toBe(raw);
+  });
+
+  it('appends a manual model the provider did not return', () => {
+    const raw: DiscoveredModel[] = [
+      {
+        id: 'gpt-4o',
+        displayName: 'GPT-4o',
+        provider: 'openai',
+        contextWindow: 128000,
+        inputPricePerToken: 0.000005,
+        outputPricePerToken: 0.000015,
+        capabilityReasoning: false,
+        capabilityCode: true,
+        qualityScore: 4,
+      },
+    ];
+    const manual = [
+      {
+        model_name: 'gpt-4o-special',
+        param_schema_ref: { provider: 'openai', authType: 'api_key' as const, model: 'gpt-4o' },
+      },
+    ];
+
+    const result = supplementWithManualModels(raw, manual, 'openai');
+
+    expect(result.map((m) => m.id)).toEqual(['gpt-4o', 'gpt-4o-special']);
+    const added = result.find((m) => m.id === 'gpt-4o-special')!;
+    expect(added.provider).toBe('openai');
+    expect(added.manual).toBe(true);
+    expect(added.paramSchemaRef).toEqual({
+      provider: 'openai',
+      authType: 'api_key',
+      model: 'gpt-4o',
+    });
+  });
+
+  it('does not duplicate a manual model the provider already returned', () => {
+    const raw: DiscoveredModel[] = [
+      {
+        id: 'gpt-4o',
+        displayName: 'GPT-4o',
+        provider: 'openai',
+        contextWindow: 128000,
+        inputPricePerToken: 0.000005,
+        outputPricePerToken: 0.000015,
+        capabilityReasoning: false,
+        capabilityCode: true,
+        qualityScore: 4,
+      },
+    ];
+    const manual = [{ model_name: 'GPT-4O' }]; // same id, different case
+
+    const result = supplementWithManualModels(raw, manual, 'openai');
+
+    expect(result).toHaveLength(1);
+    expect(result[0].manual).toBeUndefined();
+  });
+
+  it('converts user-entered per-million prices to per-token, and keeps null when unset', () => {
+    const raw: DiscoveredModel[] = [];
+    const manual = [
+      {
+        model_name: 'priced',
+        input_price_per_million_tokens: 3,
+        output_price_per_million_tokens: 15,
+      },
+      { model_name: 'free', input_price_per_million_tokens: 0, output_price_per_million_tokens: 0 },
+      { model_name: 'unknown' },
+    ];
+
+    const result = supplementWithManualModels(raw, manual, 'openai');
+    const byId = new Map(result.map((m) => [m.id, m]));
+
+    // $3 / $15 per million → per token
+    expect(byId.get('priced')!.inputPricePerToken).toBeCloseTo(3 / 1_000_000);
+    expect(byId.get('priced')!.outputPricePerToken).toBeCloseTo(15 / 1_000_000);
+    // explicit 0 → 0 ("Free" in the UI)
+    expect(byId.get('free')!.inputPricePerToken).toBe(0);
+    expect(byId.get('free')!.outputPricePerToken).toBe(0);
+    // no price entered → null ("–" in the UI)
+    expect(byId.get('unknown')!.inputPricePerToken).toBeNull();
+    expect(byId.get('unknown')!.outputPricePerToken).toBeNull();
   });
 });
 

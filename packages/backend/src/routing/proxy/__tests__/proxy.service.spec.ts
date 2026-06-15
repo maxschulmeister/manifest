@@ -97,7 +97,12 @@ describe('ProxyService — orchestration', () => {
   let thinkingCache: ThinkingBlockCache;
   let reasoningCache: ReasoningContentCache;
   let modelParamsService: { get: jest.Mock; list: jest.Mock; set: jest.Mock; delete: jest.Mock };
-  let providerParamSpecs: { getSpecs: jest.Mock; list: jest.Mock };
+  let providerParamSpecs: {
+    getSpecs: jest.Mock;
+    getSpecsForRoute: jest.Mock;
+    getParamDefaultsForRoute: jest.Mock;
+    list: jest.Mock;
+  };
   let svc: ProxyService;
 
   beforeEach(() => {
@@ -150,6 +155,11 @@ describe('ProxyService — orchestration', () => {
       getSpecs: jest.fn(async (provider: string, authType: string, model: string) =>
         getProviderParamSpecs(specCatalog, provider, authType as AuthType, model),
       ),
+      getSpecsForRoute: jest.fn(
+        async (_agentId: string, provider: string, authType: string, model: string) =>
+          getProviderParamSpecs(specCatalog, provider, authType as AuthType, model),
+      ),
+      getParamDefaultsForRoute: jest.fn().mockResolvedValue(null),
       list: jest.fn().mockResolvedValue(specCatalog),
     };
 

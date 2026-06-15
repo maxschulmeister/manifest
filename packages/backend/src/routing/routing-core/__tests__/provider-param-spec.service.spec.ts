@@ -133,6 +133,58 @@ describe('ProviderParamSpecService', () => {
     expect(subscriptionSpecs.map((spec) => spec.path)).toEqual([]);
   });
 
+  it('uses a manual model parameter schema reference', async () => {
+    mockRemoteCatalog();
+    const repo = {
+      findOne: jest.fn().mockResolvedValue({
+        manual_models: [
+          {
+            model_name: 'claude-sonnet-4-6',
+            param_schema_ref: {
+              provider: 'anthropic',
+              authType: 'api_key',
+              model: 'claude-sonnet-4-6',
+            },
+          },
+        ],
+      }),
+    };
+    const service = new ProviderParamSpecService(repo as never);
+    await service.refreshCache();
+
+    const result = await service.getSpecsForRoute(
+      'agent-1',
+      'anthropic',
+      'api_key',
+      'claude-sonnet-4-6',
+    );
+
+    expect(result.map((spec) => spec.path)).toEqual(['thinking.type']);
+    expect(result[0]).toMatchObject({
+      provider: 'anthropic',
+      authType: 'api_key',
+      model: 'claude-sonnet-4-6',
+    });
+  });
+
+  it('returns custom JSON defaults saved on a manual model route', async () => {
+    const repo = {
+      findOne: jest.fn().mockResolvedValue({
+        manual_models: [
+          {
+            model_name: 'glm-5.2',
+            param_defaults: { temperature: 0.2, vendor: { reasoning: true } },
+          },
+        ],
+      }),
+    };
+    const service = new ProviderParamSpecService(repo as never);
+
+    await expect(
+      service.getParamDefaultsForRoute('agent-1', 'zai', 'api_key', 'glm-5.2'),
+    ).resolves.toEqual({ temperature: 0.2, vendor: { reasoning: true } });
+  });
+
   it('refreshes specs from modelparams.dev and filters API-level params', async () => {
     mockRemoteCatalog();
     const service = new ProviderParamSpecService();

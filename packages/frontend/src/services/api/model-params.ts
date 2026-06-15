@@ -36,6 +36,18 @@ export function getModelParamSpecs(
   });
 }
 
+export function getCatalogModelParamSpecs(
+  agentName: string,
+  provider: string,
+  authType: AuthType,
+  model: string,
+) {
+  return fetchJson<ProviderParamSpec[]>(
+    routingPath(agentName, 'model-param-specs/catalog/by-model'),
+    { provider, authType, model },
+  );
+}
+
 /** Route identity of a model that has configurable params (no param metadata). */
 export interface ModelParamSpecId {
   provider: string;

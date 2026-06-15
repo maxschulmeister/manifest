@@ -29,6 +29,21 @@ export interface DiscoveredModel {
   supportedEndpoints?: readonly string[];
   qualityScore: number;
   authType?: AuthType;
+  /**
+   * True for models the operator added manually because the provider's
+   * `/models` endpoint omits them. Surfaced to the UI so manual models can
+   * be badged and removed; ignored by routing / proxy code (manual models
+   * are forwarded like any other integrated-provider model).
+   */
+  manual?: boolean;
+  /** Source model whose modelparams.dev schema should drive this manual model's params UI. */
+  paramSchemaRef?: {
+    provider: string;
+    authType: AuthType;
+    model: string;
+  } | null;
+  /** Raw JSON request-body defaults configured for an operator-added model. */
+  paramDefaults?: unknown | null;
 }
 
 export interface FetcherConfig {

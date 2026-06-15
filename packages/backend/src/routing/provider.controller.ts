@@ -19,6 +19,8 @@ import { TierService } from './routing-core/tier.service';
 import { ModelDiscoveryService } from '../model-discovery/model-discovery.service';
 import { OllamaSyncService } from '../database/ollama-sync.service';
 import { PricingSyncService } from '../database/pricing-sync.service';
+import { ManualModelService } from './routing-core/manual-model.service';
+import { ManualModelDto, ManualModelSettingsDto } from './dto/manual-model.dto';
 import {
   AgentNameParamDto,
   AgentProviderParamDto,
@@ -41,6 +43,7 @@ export class ProviderController {
     private readonly resolveAgentService: ResolveAgentService,
     private readonly tierService: TierService,
     private readonly pricingSync: PricingSyncService,
+    private readonly manualModels: ManualModelService,
   ) {}
 
   @Get(':agentName/status')
@@ -103,6 +106,57 @@ export class ProviderController {
     );
     if (!row) throw new BadRequestException('Provider connection not found');
     return this.mapProviderModels(row.cached_models, row.provider, row.auth_type);
+  }
+
+  @Get(':agentName/providers/:provider/manual-models')
+  async getManualModels(
+    @CurrentUser() user: AuthUser,
+    @Param() params: AgentProviderParamDto,
+    @Query() query: ProviderModelsQueryDto,
+  ) {
+    const agent = await this.resolveAgentService.resolve(user.id, params.agentName);
+    return this.manualModels.list(agent.id, params.provider, query.authType);
+  }
+
+  @Post(':agentName/providers/:provider/manual-models')
+  async addManualModel(
+    @CurrentUser() user: AuthUser,
+    @Param() params: AgentProviderParamDto,
+    @Query() query: ProviderModelsQueryDto,
+    @Body() body: ManualModelDto,
+  ) {
+    const agent = await this.resolveAgentService.resolve(user.id, params.agentName);
+    return this.manualModels.add(agent.id, params.provider, query.authType, body);
+  }
+
+  @Patch(':agentName/providers/:provider/manual-models/:modelId')
+  async updateManualModelSettings(
+    @CurrentUser() user: AuthUser,
+    @Param() params: AgentProviderParamDto,
+    @Param('modelId') modelId: string,
+    @Query() query: ProviderModelsQueryDto,
+    @Body() body: ManualModelSettingsDto,
+  ) {
+    const agent = await this.resolveAgentService.resolve(user.id, params.agentName);
+    return this.manualModels.updateSettings(
+      agent.id,
+      params.provider,
+      query.authType,
+      modelId,
+      body,
+    );
+  }
+
+  @Delete(':agentName/providers/:provider/manual-models/:modelId')
+  async removeManualModel(
+    @CurrentUser() user: AuthUser,
+    @Param() params: AgentProviderParamDto,
+    @Param('modelId') modelId: string,
+    @Query() query: ProviderModelsQueryDto,
+  ) {
+    const agent = await this.resolveAgentService.resolve(user.id, params.agentName);
+    await this.manualModels.remove(agent.id, params.provider, query.authType, modelId);
+    return { ok: true };
   }
 
   @Post(':agentName/providers')
@@ -261,6 +315,9 @@ export class ProviderController {
       capabilities: m.capabilities ?? [],
       input_modalities: m.inputModalities ?? [],
       output_modalities: m.outputModalities ?? [],
+      manual: m.manual === true,
+      param_schema_ref: m.paramSchemaRef ?? null,
+      param_defaults: m.paramDefaults ?? null,
     }));
   }
 }

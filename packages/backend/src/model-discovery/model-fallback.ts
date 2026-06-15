@@ -1,4 +1,5 @@
 import { DiscoveredModel, DEFAULT_CONTEXT_WINDOW } from './model-fetcher';
+import type { CustomProviderModel } from '../entities/custom-provider.entity';
 import {
   OPENROUTER_PREFIX_TO_PROVIDER,
   PROVIDER_BY_ID_OR_ALIAS,
@@ -342,6 +343,56 @@ export function supplementWithKnownModels(
       capabilityReasoning: false,
       capabilityCode: false,
       qualityScore: 3,
+    });
+  }
+
+  return raw;
+}
+
+/**
+ * Supplement discovered models with operator-added manual models for an
+ * integrated provider. These are models the provider's `/models` endpoint
+ * omits but the operator knows are reachable on their connection. Manual
+ * models are merged into `cached_models` so they survive refresh and flow
+ * through the same routing / tier / proxy path as discovered models.
+ *
+ * Pricing is left null so `enrichModel()` fills it from models.dev /
+ * OpenRouter / known-prices on the next pass, exactly like a freshly
+ * fetched model. Returns `raw` by reference when there is nothing to add.
+ */
+export function supplementWithManualModels(
+  raw: DiscoveredModel[],
+  manual: readonly CustomProviderModel[] | null,
+  providerId: string,
+): DiscoveredModel[] {
+  if (!manual || manual.length === 0) return raw;
+
+  for (const entry of manual) {
+    const modelId = entry.model_name;
+    if (!modelId) continue;
+    // Skip if the provider already returned this model (case-insensitive).
+    if (raw.some((m) => m.id.toLowerCase() === modelId.toLowerCase())) continue;
+
+    // User-entered prices are per-million-tokens (matching the custom-provider
+    // storage shape); DiscoveredModel prices are per-token, so divide by 1M.
+    // Leave null when unset so enrichModel() can still try catalogs — but for
+    // a manual model those usually miss, which is correct (display "–").
+    const toPerToken = (perMillion: number | undefined | null): number | null =>
+      perMillion == null ? null : perMillion / 1_000_000;
+
+    raw.push({
+      id: modelId,
+      displayName: modelId,
+      provider: providerId,
+      contextWindow: entry.context_window ?? DEFAULT_CONTEXT_WINDOW,
+      inputPricePerToken: toPerToken(entry.input_price_per_million_tokens),
+      outputPricePerToken: toPerToken(entry.output_price_per_million_tokens),
+      capabilityReasoning: false,
+      capabilityCode: false,
+      qualityScore: 3,
+      manual: true,
+      ...(entry.param_schema_ref ? { paramSchemaRef: entry.param_schema_ref } : {}),
+      ...(entry.param_defaults ? { paramDefaults: entry.param_defaults } : {}),
     });
   }
 

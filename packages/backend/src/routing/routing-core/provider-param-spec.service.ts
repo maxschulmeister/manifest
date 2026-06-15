@@ -1,5 +1,7 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit, Optional } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { Repository } from 'typeorm';
 import {
   AUTH_TYPES,
   MODEL_CAPABILITIES,
@@ -21,8 +23,11 @@ import {
   type ProviderModelParamSpec,
   type ProviderParamSpec,
   type ProviderParamSpecCatalog,
+  type RequestParamDefaults,
 } from 'manifest-shared';
 import { MPS_CATALOG_SNAPSHOT } from './mps-catalog-snapshot';
+import { UserProvider } from '../../entities/user-provider.entity';
+import type { CustomProviderModel } from '../../entities/custom-provider.entity';
 
 const MODEL_PARAMETERS_API = 'https://modelparams.dev/api/v1/models.json';
 const MODEL_PARAMETERS_BY_MODEL_API = 'https://modelparams.dev/api/v1/params';
@@ -68,6 +73,12 @@ interface ProviderlessModelParamsCacheEntry {
 @Injectable()
 export class ProviderParamSpecService implements OnModuleInit {
   private readonly logger = new Logger(ProviderParamSpecService.name);
+
+  constructor(
+    @Optional()
+    @InjectRepository(UserProvider)
+    private readonly providerRepo?: Pick<Repository<UserProvider>, 'findOne'>,
+  ) {}
   // Seed from the bundled snapshot so the params catalog is never empty when
   // modelparams.dev is unreachable at boot (offline / blocked / migrated host).
   // refreshCache() overwrites this with fresh data on a successful fetch.
@@ -134,6 +145,14 @@ export class ProviderParamSpecService implements OnModuleInit {
     });
   }
 
+  getCatalogSpecs(
+    providerId: string | undefined,
+    authType: AuthType | undefined,
+    model: string | undefined,
+  ): readonly ProviderParamSpec[] {
+    return getProviderParamSpecs(this.specs, providerId, authType, model);
+  }
+
   async getSpecs(
     providerId: string | undefined,
     authType: AuthType | undefined,
@@ -141,7 +160,42 @@ export class ProviderParamSpecService implements OnModuleInit {
   ): Promise<readonly ProviderParamSpec[]> {
     const providerlessSpecs = await this.getProviderlessSpecs(providerId, authType, model);
     if (providerlessSpecs.length > 0) return providerlessSpecs;
-    return getProviderParamSpecs(this.specs, providerId, authType, model);
+    return this.getCatalogSpecs(providerId, authType, model);
+  }
+
+  async getSpecsForRoute(
+    agentId: string,
+    providerId: string | undefined,
+    authType: AuthType | undefined,
+    model: string | undefined,
+  ): Promise<readonly ProviderParamSpec[]> {
+    if (!providerId || !authType || !model) {
+      return getProviderParamSpecs(this.specs, providerId, authType, model);
+    }
+
+    const manual = await this.getManualModel(agentId, providerId, authType, model);
+    const ref = manual?.param_schema_ref ?? null;
+    if (ref) {
+      const referenced = await this.getSpecs(ref.provider, ref.authType, ref.model);
+      return referenced.map((spec) => ({
+        ...spec,
+        provider: normalizeProviderParamProviderId(providerId),
+        authType,
+        model,
+      }));
+    }
+
+    return this.getSpecs(providerId, authType, model);
+  }
+
+  async getParamDefaultsForRoute(
+    agentId: string,
+    provider: string,
+    authType: AuthType,
+    model: string,
+  ): Promise<RequestParamDefaults | null> {
+    const manual = await this.getManualModel(agentId, provider, authType, model);
+    return (manual?.param_defaults as RequestParamDefaults | undefined) ?? null;
   }
 
   async getCapabilities(
@@ -154,6 +208,20 @@ export class ProviderParamSpecService implements OnModuleInit {
 
   getLastFetchedAt(): Date | null {
     return this.lastFetchedAt;
+  }
+
+  private async getManualModel(
+    agentId: string,
+    provider: string,
+    authType: AuthType,
+    model: string,
+  ): Promise<CustomProviderModel | null> {
+    if (!this.providerRepo) return null;
+    const row = await this.providerRepo.findOne({
+      where: { agent_id: agentId, provider, auth_type: authType, is_active: true },
+    });
+    const manual = Array.isArray(row?.manual_models) ? row.manual_models : [];
+    return manual.find((item) => item.model_name.toLowerCase() === model.toLowerCase()) ?? null;
   }
 
   private async fetchModelParametersData(): Promise<{

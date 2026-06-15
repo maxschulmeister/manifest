@@ -17,6 +17,7 @@ import { Tier, TIERS, ScorerMessage } from '../../scoring/types';
 import type {
   AuthType,
   RequestParamDefaults,
+  ProviderParamSpec,
   ResponseMode,
   OutputModality,
   SpecificityCategory,
@@ -28,6 +29,7 @@ import {
   modelParamsScopeForRouting,
   routeEquals,
   snapshotRequestParams,
+  applyRequestParamDefaults,
   isModelRoute,
 } from 'manifest-shared';
 import type { ParamMergeContext } from './proxy-fallback.service';
@@ -236,15 +238,27 @@ export class ProxyService {
     // Independent reads — the params row and the provider spec list don't
     // depend on each other, so fetch them concurrently to shave a round-trip
     // off the cold path before forwarding.
-    const [primaryModelParams, primarySpecs] = await Promise.all([
+    const [primaryModelParams, primaryManualParams, primarySpecs] = await Promise.all([
       this.modelParamsService.get(agentId, scopeKey, route.provider, route.authType, primaryModel),
-      this.providerParamSpecs.getSpecs(route.provider, route.authType, primaryModel),
+      this.providerParamSpecs.getParamDefaultsForRoute(
+        agentId,
+        route.provider,
+        route.authType,
+        primaryModel,
+      ),
+      this.providerParamSpecs.getSpecsForRoute(
+        agentId,
+        route.provider,
+        route.authType,
+        primaryModel,
+      ),
     ]);
-    const primaryRequestParams = snapshotRequestParams({
-      body: routingBody as Record<string, unknown>,
-      modelParams: primaryModelParams,
-      specs: primarySpecs,
-    });
+    const primaryRequestParams = this.snapshotMergedRequestParams(
+      routingBody as Record<string, unknown>,
+      primaryManualParams,
+      primaryModelParams,
+      primarySpecs,
+    );
 
     const forward = await this.fallbackService.tryForwardToProvider({
       provider: route.provider,
@@ -579,7 +593,7 @@ export class ProxyService {
       // params row (if any) is what was actually applied. Different model
       // → different lookup → different snapshot, matching the wire. The two
       // lookups are independent, so resolve them together.
-      const [fallbackModelParams, fallbackSpecs] = await Promise.all([
+      const [fallbackModelParams, fallbackManualParams, fallbackSpecs] = await Promise.all([
         success.authType
           ? this.modelParamsService.get(
               args.paramMergeContext.agentId,
@@ -590,14 +604,28 @@ export class ProxyService {
             )
           : null,
         success.authType
-          ? this.providerParamSpecs.getSpecs(success.provider, success.authType, success.model)
+          ? this.providerParamSpecs.getParamDefaultsForRoute(
+              agentId,
+              success.provider,
+              success.authType,
+              success.model,
+            )
+          : null,
+        success.authType
+          ? this.providerParamSpecs.getSpecsForRoute(
+              agentId,
+              success.provider,
+              success.authType,
+              success.model,
+            )
           : [],
       ]);
-      const fallbackRequestParams = snapshotRequestParams({
-        body: body as Record<string, unknown>,
-        modelParams: fallbackModelParams,
-        specs: fallbackSpecs,
-      });
+      const fallbackRequestParams = this.snapshotMergedRequestParams(
+        body as Record<string, unknown>,
+        fallbackManualParams,
+        fallbackModelParams,
+        fallbackSpecs,
+      );
       return {
         forward: success.forward,
         meta: this.buildBaseMeta(resolved, success.model, {
@@ -628,7 +656,7 @@ export class ProxyService {
     // the primary-provider snapshot for the row. Look up the primary's
     // model-params one more time so the snapshot reflects what was sent
     // before the chain failed.
-    const [primaryModelParams, exhaustedSpecs] = await Promise.all([
+    const [primaryModelParams, primaryManualParams, exhaustedSpecs] = await Promise.all([
       primaryProvider && primaryAuth && resolved.route
         ? this.modelParamsService.get(
             args.paramMergeContext.agentId,
@@ -639,18 +667,28 @@ export class ProxyService {
           )
         : null,
       primaryProvider && primaryAuth && resolved.route
-        ? this.providerParamSpecs.getSpecs(
+        ? this.providerParamSpecs.getParamDefaultsForRoute(
+            agentId,
+            primaryProvider,
+            primaryAuth as 'api_key' | 'subscription' | 'local',
+            primaryModel,
+          )
+        : null,
+      primaryProvider && primaryAuth && resolved.route
+        ? this.providerParamSpecs.getSpecsForRoute(
+            agentId,
             primaryProvider,
             primaryAuth as 'api_key' | 'subscription' | 'local',
             primaryModel,
           )
         : [],
     ]);
-    const exhaustedRequestParams = snapshotRequestParams({
-      body: body as Record<string, unknown>,
-      modelParams: primaryModelParams,
-      specs: exhaustedSpecs,
-    });
+    const exhaustedRequestParams = this.snapshotMergedRequestParams(
+      body as Record<string, unknown>,
+      primaryManualParams,
+      primaryModelParams,
+      exhaustedSpecs,
+    );
     return {
       forward: {
         response: rebuilt,
@@ -688,6 +726,18 @@ export class ProxyService {
       response_mode: resolved.response_mode ?? DEFAULT_RESPONSE_MODE,
       ...overrides,
     };
+  }
+
+  private snapshotMergedRequestParams(
+    body: Record<string, unknown>,
+    manualParams: RequestParamDefaults | null | undefined,
+    modelParams: RequestParamDefaults | null | undefined,
+    specs: readonly ProviderParamSpec[],
+  ): RequestParamDefaults | null {
+    const bodyWithManualParams = applyRequestParamDefaults(body, manualParams, specs, {
+      passthroughUnknown: true,
+    });
+    return snapshotRequestParams({ body: bodyWithManualParams, modelParams, specs });
   }
 
   private recordCategoryIfValid(sessionKey: string, category: string | undefined): void {

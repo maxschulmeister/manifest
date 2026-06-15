@@ -2,6 +2,7 @@ import { Entity, Column, PrimaryColumn } from 'typeorm';
 import type { AuthType } from 'manifest-shared';
 import { timestampType, timestampDefault } from '../common/utils/postgres-sql';
 import type { DiscoveredModel } from '../model-discovery/model-fetcher';
+import type { CustomProviderModel } from './custom-provider.entity';
 
 @Entity('user_providers')
 export class UserProvider {
@@ -46,6 +47,14 @@ export class UserProvider {
 
   @Column('simple-json', { nullable: true, default: null })
   cached_models!: DiscoveredModel[] | null;
+
+  /**
+   * Operator-added manual models for an integrated provider. These survive
+   * `/models` refresh — `discoverModels()` merges them into `cached_models`
+   * via `supplementWithManualModels()`. Null when the operator has added none.
+   */
+  @Column('simple-json', { nullable: true, default: null })
+  manual_models!: CustomProviderModel[] | null;
 
   @Column(timestampType(), { nullable: true, default: null })
   models_fetched_at!: string | null;

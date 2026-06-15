@@ -134,15 +134,20 @@ export class ProxyFallbackService {
     model: string,
   ): Promise<Record<string, unknown>> {
     if (!ctx || !authType) return body;
-    const modelParams = await this.modelParamsService.get(
-      ctx.agentId,
-      ctx.scopeKey,
-      provider,
-      authType as AuthType,
-      model,
-    );
-    const specs = await this.providerParamSpecs.getSpecs(provider, authType as AuthType, model);
-    return applyRequestParamDefaults(body, modelParams, specs);
+    const [modelParams, manualDefaults, specs] = await Promise.all([
+      this.modelParamsService.get(ctx.agentId, ctx.scopeKey, provider, authType as AuthType, model),
+      this.providerParamSpecs.getParamDefaultsForRoute(
+        ctx.agentId,
+        provider,
+        authType as AuthType,
+        model,
+      ),
+      this.providerParamSpecs.getSpecsForRoute(ctx.agentId, provider, authType as AuthType, model),
+    ]);
+    const withManualDefaults = applyRequestParamDefaults(body, manualDefaults, specs, {
+      passthroughUnknown: true,
+    });
+    return applyRequestParamDefaults(withManualDefaults, modelParams, specs);
   }
 
   async tryFallbacks(
