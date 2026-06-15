@@ -554,6 +554,10 @@
   color: hsl(var(--foreground));
 }
 
+.provider-model-table__settings-btn--configured {
+  color: hsl(var(--success));
+}
+
 /*
  * Add-model area below the table. The input row reuses the same
  * custom-provider-model-row layout (3 inputs, no button column) so the

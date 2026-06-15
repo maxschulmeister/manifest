@@ -283,7 +283,11 @@ describe('ProviderDetailView', () => {
       expect(screen.getAllByText('claude-secret')).toHaveLength(1);
       expect(screen.queryByText('Claude Secret')).toBeNull();
       expect(screen.getByText('Custom')).toBeDefined();
-      expect(screen.getByLabelText('Configure claude-secret parameters')).toBeDefined();
+      expect(
+        screen
+          .getByLabelText('Configure claude-secret parameters')
+          .classList.contains('provider-model-table__settings-btn--configured'),
+      ).toBe(true);
       expect(screen.queryByText('Params: claude-opus')).toBeNull();
 
       fireEvent.click(screen.getByLabelText('Remove claude-secret from Anthropic'));
@@ -296,6 +300,35 @@ describe('ProviderDetailView', () => {
           'claude-secret',
         );
       });
+    });
+
+    it('leaves the manual model settings icon uncolored until params are set', async () => {
+      mockGetProviderModels.mockResolvedValue([
+        {
+          model_name: 'glm-5.2',
+          provider: 'anthropic',
+          auth_type: 'api_key',
+          context_window: 128000,
+          input_price_per_token: null,
+          output_price_per_token: null,
+          capability_reasoning: false,
+          capability_code: false,
+          quality_score: 3,
+          manual: true,
+          param_defaults: null,
+        },
+      ]);
+      const props = createTestProps({ provId: 'anthropic', providers: connectedAnthropic });
+      render(() => <ProviderDetailView {...props} />);
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('Configure glm-5.2 parameters')).toBeDefined();
+      });
+      expect(
+        screen
+          .getByLabelText('Configure glm-5.2 parameters')
+          .classList.contains('provider-model-table__settings-btn--configured'),
+      ).toBe(false);
     });
 
     it('opens settings for a manual model and saves schema source plus custom JSON', async () => {

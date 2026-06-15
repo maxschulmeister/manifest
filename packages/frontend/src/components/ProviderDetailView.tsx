@@ -646,6 +646,11 @@ const ProviderDetailView: Component<ProviderDetailViewProps> = (props) => {
                             <button
                               type="button"
                               class="provider-model-table__settings-btn"
+                              classList={{
+                                'provider-model-table__settings-btn--configured':
+                                  model.param_defaults !== null &&
+                                  model.param_defaults !== undefined,
+                              }}
                               aria-label={`Configure ${model.model_name} parameters`}
                               title={`Configure ${model.model_name} parameters`}
                               onClick={() => openManualModelSettings(model)}
