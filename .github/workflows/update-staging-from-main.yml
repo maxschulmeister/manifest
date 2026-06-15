@@ -1,0 +1,84 @@
+name: Update staging from main
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Open or update a staging sync PR after main's daily upstream sync.
+    - cron: "30 6 * * *"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-staging:
+    name: Open staging sync PR
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout fork (full history)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          # Use a PAT/App token in SYNC_TOKEN if PR checks should run from this bot-created branch.
+          # GitHub suppresses most workflow triggers from the default GITHUB_TOKEN.
+          token: ${{ secrets.SYNC_TOKEN || github.token }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch branches
+        run: |
+          git fetch origin main staging
+
+      - name: Check whether staging already contains main
+        id: check
+        run: |
+          if git merge-base --is-ancestor origin/main origin/staging; then
+            echo "needs_update=false" >> "$GITHUB_OUTPUT"
+            echo "staging already contains origin/main."
+          else
+            echo "needs_update=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Merge main into sync branch
+        if: steps.check.outputs.needs_update == 'true'
+        run: |
+          git checkout -B sync/main-into-staging origin/staging
+          git merge origin/main --no-edit
+
+      - name: Push sync branch
+        if: steps.check.outputs.needs_update == 'true'
+        run: |
+          git push origin HEAD:refs/heads/sync/main-into-staging --force-with-lease
+
+      - name: Open or update pull request
+        if: steps.check.outputs.needs_update == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.SYNC_TOKEN || github.token }}
+        run: |
+          PR_BODY=$(cat <<'EOF'
+          This automated PR updates `staging` with the latest `main`.
+
+          `main` is expected to be an exact mirror of `upstream/main`; `staging` is the integration branch for fork-specific work.
+
+          If this PR has conflicts or failing checks, resolve it manually instead of pushing directly to `staging`.
+          EOF
+          )
+
+          if gh pr view sync/main-into-staging --base staging --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh pr edit sync/main-into-staging \
+              --base staging \
+              --title "chore: update staging from main" \
+              --body "$PR_BODY" \
+              --repo "$GITHUB_REPOSITORY"
+          else
+            gh pr create \
+              --base staging \
+              --head sync/main-into-staging \
+              --title "chore: update staging from main" \
+              --body "$PR_BODY" \
+              --repo "$GITHUB_REPOSITORY"
+          fi
