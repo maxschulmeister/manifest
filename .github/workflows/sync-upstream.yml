@@ -1,24 +1,23 @@
-name: Sync Fork with Upstream
+name: Sync main with upstream
 
 on:
   schedule:
     # Run every day at 06:00 UTC
     - cron: "0 6 * * *"
-  workflow_dispatch: # Allow manual triggering
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
   sync:
-    name: Sync upstream → main
+    name: Mirror upstream/main to origin/main
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout fork (full history)
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          ref: main
           fetch-depth: 0
 
       - name: Configure git
@@ -29,37 +28,29 @@ jobs:
       - name: Add upstream remote
         run: git remote add upstream https://github.com/mnfst/manifest.git
 
-      - name: Fetch upstream and origin branches
-        run: git fetch upstream main && git fetch origin main staging
+      - name: Fetch main branches
+        run: |
+          git fetch origin main
+          git fetch upstream main
 
-      - name: Check for new commits
+      - name: Check whether main is already synced
         id: check
         run: |
-          LOCAL=$(git rev-parse HEAD)
-          REMOTE=$(git rev-parse upstream/main)
-          if [ "$LOCAL" = "$REMOTE" ]; then
+          ORIGIN_MAIN=$(git rev-parse origin/main)
+          UPSTREAM_MAIN=$(git rev-parse upstream/main)
+
+          echo "origin/main:   $ORIGIN_MAIN"
+          echo "upstream/main: $UPSTREAM_MAIN"
+
+          if [ "$ORIGIN_MAIN" = "$UPSTREAM_MAIN" ]; then
             echo "has_updates=false" >> "$GITHUB_OUTPUT"
-            echo "Already up to date."
+            echo "origin/main already matches upstream/main."
           else
             echo "has_updates=true" >> "$GITHUB_OUTPUT"
-            echo "Updates available: $LOCAL → $REMOTE"
           fi
 
-      - name: Merge upstream/main into main
+      - name: Force-sync origin/main to upstream/main
         if: steps.check.outputs.has_updates == 'true'
         run: |
-          git merge upstream/main --no-edit
-
-      - name: Push main to origin
-        if: steps.check.outputs.has_updates == 'true'
-        run: git push origin main
-
-      - name: Merge main into staging
-        if: steps.check.outputs.has_updates == 'true'
-        run: |
-          git checkout staging
-          git merge origin/main --no-edit
-
-      - name: Push staging to origin
-        if: steps.check.outputs.has_updates == 'true'
-        run: git push origin staging
+          EXPECTED_ORIGIN_MAIN=$(git rev-parse origin/main)
+          git push origin upstream/main:refs/heads/main --force-with-lease=refs/heads/main:$EXPECTED_ORIGIN_MAIN
