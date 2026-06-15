@@ -1,6 +1,13 @@
 import { Entity, Column, PrimaryColumn, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { timestampType, timestampDefault } from '../common/utils/postgres-sql';
 import { Agent } from './agent.entity';
+import type { AuthType } from 'manifest-shared';
+
+export interface ParamSchemaRef {
+  provider: string;
+  authType: AuthType;
+  model: string;
+}
 
 export interface CustomProviderModel {
   model_name: string;
@@ -8,6 +15,8 @@ export interface CustomProviderModel {
   output_price_per_million_tokens?: number;
   context_window?: number;
   price_estimated?: boolean;
+  param_schema_ref?: ParamSchemaRef | null;
+  param_defaults?: unknown | null;
 }
 
 export type CustomProviderApiKind = 'openai' | 'anthropic';

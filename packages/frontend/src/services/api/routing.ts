@@ -7,6 +7,7 @@ import type {
   RouteTarget,
   ResponseMode,
   OutputModality,
+  RequestParamDefaults,
 } from 'manifest-shared';
 import { BASE_URL, fetchJson, fetchMutate, parseErrorMessage, routingPath } from './core.js';
 
@@ -313,6 +314,12 @@ export function clearFallbacks(agentName: string, tier: string) {
 
 /* -- Routing: Available Models -- */
 
+export interface ParamSchemaRef {
+  provider: string;
+  authType: AuthType;
+  model: string;
+}
+
 export interface AvailableModel {
   model_name: string;
   provider: string;
@@ -330,6 +337,10 @@ export interface AvailableModel {
   quality_score: number;
   display_name?: string;
   provider_display_name?: string;
+  /** True for operator-added models the provider's /models endpoint omits. */
+  manual?: boolean;
+  param_schema_ref?: ParamSchemaRef | null;
+  param_defaults?: RequestParamDefaults | null;
 }
 
 export function getAvailableModels(agentName: string) {
@@ -361,6 +372,63 @@ export function getProviderModels(agentName: string, provider: string, authType:
   );
 }
 
+export interface ManualModel {
+  model_name: string;
+  input_price_per_million_tokens?: number;
+  output_price_per_million_tokens?: number;
+  context_window?: number;
+  param_schema_ref?: ParamSchemaRef | null;
+  param_defaults?: RequestParamDefaults | null;
+}
+
+/** Add a manual model to an integrated provider connection. */
+export function addManualModel(
+  agentName: string,
+  provider: string,
+  authType: AuthType,
+  model: ManualModel,
+) {
+  return fetchMutate<ManualModel>(
+    `${routingPath(agentName, `providers/${encodeURIComponent(provider)}/manual-models`)}?authType=${authType}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(model),
+    },
+  );
+}
+
+/** Update parameter settings for an operator-added manual model. */
+export function updateManualModelSettings(
+  agentName: string,
+  provider: string,
+  authType: AuthType,
+  modelId: string,
+  settings: Pick<ManualModel, 'param_schema_ref' | 'param_defaults'>,
+) {
+  return fetchMutate<ManualModel>(
+    `${routingPath(agentName, `providers/${encodeURIComponent(provider)}/manual-models/${encodeURIComponent(modelId)}`)}?authType=${authType}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(settings),
+    },
+  );
+}
+
+/** Remove a manual model from an integrated provider connection. */
+export function removeManualModel(
+  agentName: string,
+  provider: string,
+  authType: AuthType,
+  modelId: string,
+) {
+  return fetchMutate<{ ok: boolean }>(
+    `${routingPath(agentName, `providers/${encodeURIComponent(provider)}/manual-models/${encodeURIComponent(modelId)}`)}?authType=${authType}`,
+    { method: 'DELETE' },
+  );
+}
+
 /* -- Routing: Pricing cache health -- */
 
 export interface PricingHealth {
@@ -389,6 +457,8 @@ export interface CustomProviderModel {
   output_price_per_million_tokens?: number;
   context_window?: number;
   price_estimated?: boolean;
+  param_schema_ref?: ParamSchemaRef | null;
+  param_defaults?: RequestParamDefaults | null;
 }
 
 export interface CustomProviderData {

@@ -40,6 +40,8 @@ describe('ModelParamsController', () => {
   let providerParamSpecs: jest.Mocked<{
     list: jest.Mock;
     getSpecs: jest.Mock;
+    getSpecsForRoute: jest.Mock;
+    getCatalogSpecs: jest.Mock;
     listModelIds: jest.Mock;
   }>;
   let resolveAgent: jest.Mocked<{ resolve: jest.Mock }>;
@@ -54,6 +56,8 @@ describe('ModelParamsController', () => {
     providerParamSpecs = {
       list: jest.fn().mockResolvedValue(specCatalog),
       getSpecs: jest.fn().mockResolvedValue(specs),
+      getSpecsForRoute: jest.fn().mockResolvedValue(specs),
+      getCatalogSpecs: jest.fn().mockReturnValue(specs),
       listModelIds: jest
         .fn()
         .mockReturnValue([{ provider: 'deepseek', authType: 'api_key', model: 'deepseek-v4' }]),
@@ -82,7 +86,25 @@ describe('ModelParamsController', () => {
         { provider: 'deepseek', authType: 'api_key', model: 'deepseek-v4' },
       );
       expect(resolveAgent.resolve).toHaveBeenCalledWith('user-1', 'demo');
-      expect(providerParamSpecs.getSpecs).toHaveBeenCalledWith(
+      expect(providerParamSpecs.getSpecsForRoute).toHaveBeenCalledWith(
+        'agent-1',
+        'deepseek',
+        'api_key',
+        'deepseek-v4',
+      );
+      expect(result).toBe(specs);
+    });
+  });
+
+  describe('GET /model-param-specs/catalog/by-model', () => {
+    it('returns specs for a modelparams.dev catalog identity without route refs', async () => {
+      const result = await controller.catalogSpecsByModel(
+        mockUser,
+        { agentName: 'demo' },
+        { provider: 'deepseek', authType: 'api_key', model: 'deepseek-v4' },
+      );
+      expect(resolveAgent.resolve).toHaveBeenCalledWith('user-1', 'demo');
+      expect(providerParamSpecs.getCatalogSpecs).toHaveBeenCalledWith(
         'deepseek',
         'api_key',
         'deepseek-v4',
@@ -148,7 +170,8 @@ describe('ModelParamsController', () => {
         },
       );
 
-      expect(providerParamSpecs.getSpecs).toHaveBeenCalledWith(
+      expect(providerParamSpecs.getSpecsForRoute).toHaveBeenCalledWith(
+        'agent-1',
         'deepseek',
         'api_key',
         'deepseek-v4',
@@ -212,7 +235,7 @@ describe('ModelParamsController', () => {
     });
 
     it('throws when the model has no compatible specs', async () => {
-      providerParamSpecs.getSpecs.mockResolvedValueOnce([]);
+      providerParamSpecs.getSpecsForRoute.mockResolvedValueOnce([]);
       await expect(
         controller.set(
           mockUser,

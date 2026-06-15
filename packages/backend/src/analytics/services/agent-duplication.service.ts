@@ -162,7 +162,7 @@ export class AgentDuplicationService {
             created_at: now,
           };
         });
-        await manager.getRepository(CustomProvider).insert(newCustomProviders);
+        await manager.getRepository(CustomProvider).insert(newCustomProviders as never);
       }
 
       const providers = await manager
@@ -186,7 +186,7 @@ export class AgentDuplicationService {
             updated_at: now,
             cached_models: p.cached_models,
             models_fetched_at: p.models_fetched_at,
-          })),
+          })) as never,
         );
       }
 

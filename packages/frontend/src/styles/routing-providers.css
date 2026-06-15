@@ -440,7 +440,6 @@
   font-weight: 600;
   letter-spacing: 0.04em;
   line-height: 1;
-  text-transform: uppercase;
 }
 
 .provider-model-table__head > span:nth-child(2),
@@ -464,8 +463,8 @@
   display: flex;
   min-width: 0;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 8px;
+  align-items: center;
+  gap: 8px;
 }
 
 .provider-model-table__label {
@@ -478,6 +477,7 @@
   font-size: var(--font-size-sm);
   font-weight: 500;
   text-overflow: ellipsis;
+  text-transform: none;
   white-space: nowrap;
 }
 
@@ -489,6 +489,7 @@
   font-family: var(--font-mono, monospace);
   font-size: var(--font-size-xs);
   line-height: 1.35;
+  text-transform: none;
 }
 
 .provider-model-table__cell {
@@ -514,6 +515,145 @@
   overflow: hidden;
   clip: rect(0 0 0 0);
   white-space: nowrap;
+}
+
+.provider-model-table__manual-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+}
+
+.provider-model-table__settings-btn,
+.provider-model-table__remove-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.provider-model-table__settings-btn {
+  font-size: 0;
+}
+
+.provider-model-table__settings-btn:hover,
+.provider-model-table__remove-btn:hover {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+}
+
+/*
+ * Add-model area below the table. The input row reuses the same
+ * custom-provider-model-row layout (3 inputs, no button column) so the
+ * field styling is identical to the custom-provider form. The + Add model
+ * button is full-width below.
+ */
+.provider-model-add {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.provider-model-add__btn {
+  width: 100%;
+}
+
+.manual-model-settings {
+  width: min(760px, calc(100vw - 32px));
+  max-height: min(760px, calc(100vh - 32px));
+  overflow: visible;
+}
+
+.manual-model-settings__section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.manual-model-settings__section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.manual-model-settings__clear-schema {
+  flex: 0 0 auto;
+}
+
+.manual-model-settings .routing-modal__inline-picker {
+  max-height: 240px;
+}
+
+.manual-model-settings .routing-modal__list {
+  max-height: 188px;
+}
+
+.manual-model-settings__json-editor {
+  position: relative;
+  min-height: 260px;
+  overflow: hidden;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  background: hsl(var(--muted) / 0.24);
+}
+
+.manual-model-settings__highlight,
+.manual-model-settings__textarea {
+  box-sizing: border-box;
+  width: 100%;
+  height: 260px;
+  margin: 0;
+  padding: 12px 14px;
+  overflow: auto;
+  border: 0;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: var(--font-size-sm);
+  line-height: 1.55;
+  tab-size: 2;
+  white-space: pre;
+}
+
+.manual-model-settings__highlight {
+  pointer-events: none;
+  color: hsl(var(--muted-foreground));
+}
+
+.manual-model-settings__textarea {
+  position: absolute;
+  inset: 0;
+  resize: none;
+  background: transparent;
+  color: transparent;
+  caret-color: hsl(var(--foreground));
+  outline: none;
+}
+
+.manual-model-settings__textarea::selection {
+  background: hsl(var(--primary) / 0.24);
+  color: transparent;
+}
+
+.manual-model-settings__error {
+  margin-top: 0;
+}
+
+.manual-model-settings__footer {
+  margin-top: 18px;
 }
 
 @keyframes provider-detail-refresh-spin {
@@ -913,6 +1053,11 @@
   min-width: 0;
 }
 
+.custom-provider-model-row__schema {
+  flex: 1.5;
+  min-width: 0;
+}
+
 /* Hide number input spinners for a cleaner look */
 .custom-provider-model-row__price::-webkit-inner-spin-button,
 .custom-provider-model-row__price::-webkit-outer-spin-button {
@@ -1090,6 +1235,10 @@
 
   .custom-provider-model-row__price {
     flex: 1 1 40%;
+  }
+
+  .custom-provider-model-row__schema {
+    flex: 1 1 100%;
   }
 }
 

@@ -112,6 +112,16 @@ describe('ProxyFallbackService', () => {
       getSpecs: jest.fn(async (provider: string, authType: string, model: string) =>
         getProviderParamSpecs(specCatalog, provider, authType as 'api_key' | 'subscription', model),
       ),
+      getSpecsForRoute: jest.fn(
+        async (_agentId: string, provider: string, authType: string, model: string) =>
+          getProviderParamSpecs(
+            specCatalog,
+            provider,
+            authType as 'api_key' | 'subscription',
+            model,
+          ),
+      ),
+      getParamDefaultsForRoute: jest.fn().mockResolvedValue(null),
       list: jest.fn().mockResolvedValue(specCatalog),
     } as unknown as jest.Mocked<ProviderParamSpecService>;
 

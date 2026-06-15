@@ -131,6 +131,22 @@ describe('applyRequestParamDefaults', () => {
     expect(merged).toEqual({ messages: [], temperature: 0.2 });
   });
 
+  it('passes custom JSON defaults through when requested', () => {
+    const body: Record<string, unknown> = { messages: [], metadata: { request: 'client' } };
+    const merged = applyRequestParamDefaults(
+      body,
+      { metadata: { manifest: true }, vendor_extension: { mode: 'fast' }, temperature: 0.2 },
+      specs,
+      { passthroughUnknown: true },
+    );
+    expect(merged).toEqual({
+      messages: [],
+      metadata: { request: 'client', manifest: true },
+      vendor_extension: { mode: 'fast' },
+      temperature: 0.2,
+    });
+  });
+
   it('does not mutate the inputs', () => {
     const body: Record<string, unknown> = { messages: [] };
     const defaults = { thinking: { type: 'enabled' as const } };

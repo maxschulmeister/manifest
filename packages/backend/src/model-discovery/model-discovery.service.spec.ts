@@ -50,6 +50,7 @@ function makeProvider(overrides: Partial<UserProvider> = {}): UserProvider {
     connected_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
     cached_models: null,
+    manual_models: null,
     models_fetched_at: null,
     ...overrides,
   } as UserProvider;
@@ -369,6 +370,49 @@ describe('ModelDiscoveryService', () => {
       await serviceNoRegistry.discoverModels(makeProvider());
 
       expect(mockModelRegistry.registerModels).not.toHaveBeenCalled();
+    });
+
+    it('merges operator-added manual models into cached_models', async () => {
+      fetcher.fetch.mockResolvedValue([makeModel({ id: 'gpt-4o' })]);
+      const provider = makeProvider({
+        manual_models: [{ model_name: 'gpt-4o-special' }],
+      });
+
+      await service.discoverModels(provider);
+
+      const ids = (provider.cached_models ?? []).map((m) => m.id);
+      expect(ids).toEqual(['gpt-4o', 'gpt-4o-special']);
+      const manual = (provider.cached_models ?? []).find((m) => m.id === 'gpt-4o-special')!;
+      expect(manual.manual).toBe(true);
+      expect(manual.provider).toBe('openai');
+    });
+
+    it('preserves manual models across a refresh (second discoverModels call)', async () => {
+      fetcher.fetch.mockResolvedValue([makeModel({ id: 'gpt-4o' })]);
+      const provider = makeProvider({
+        manual_models: [{ model_name: 'gpt-4o-special' }],
+      });
+
+      await service.discoverModels(provider);
+      // Second refresh: the provider's /models list is unchanged, but a naive
+      // implementation would wipe manual_models out of cached_models.
+      await service.discoverModels(provider);
+
+      const ids = (provider.cached_models ?? []).map((m) => m.id);
+      expect(ids).toEqual(['gpt-4o', 'gpt-4o-special']);
+    });
+
+    it('does not add a manual model that the provider already returned', async () => {
+      fetcher.fetch.mockResolvedValue([makeModel({ id: 'gpt-4o' })]);
+      const provider = makeProvider({
+        manual_models: [{ model_name: 'gpt-4o' }],
+      });
+
+      await service.discoverModels(provider);
+
+      const ids = (provider.cached_models ?? []).map((m) => m.id);
+      expect(ids).toEqual(['gpt-4o']);
+      expect((provider.cached_models ?? []).every((m) => !m.manual)).toBe(true);
     });
   });
 

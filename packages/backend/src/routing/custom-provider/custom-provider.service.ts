@@ -216,7 +216,7 @@ export class CustomProviderService {
       models: this.enrichCustomProviderModels(dto.name, dto.models),
       created_at: new Date().toISOString(),
     });
-    await this.repo.insert(cp);
+    await this.repo.insert(cp as never);
 
     // Create UserProvider + trigger tier recalculation. When the display
     // name resolves to Ollama / LM Studio we tag the row `'local'` so

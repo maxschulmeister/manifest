@@ -165,7 +165,7 @@ export class ProviderService {
       updated_at: new Date().toISOString(),
     });
 
-    await this.providerRepo.insert(record);
+    await this.providerRepo.insert(record as never);
     await this.afterProviderInsert(agentId);
     return { provider: record, isNew: true };
   }
@@ -248,7 +248,7 @@ export class ProviderService {
       updated_at: new Date().toISOString(),
     });
 
-    await this.providerRepo.insert(record);
+    await this.providerRepo.insert(record as never);
     await this.afterProviderInsert(agentId);
     return { provider: record, isNew: true };
   }
@@ -442,7 +442,7 @@ export class ProviderService {
       updated_at: new Date().toISOString(),
     });
 
-    await this.providerRepo.insert(record);
+    await this.providerRepo.insert(record as never);
     await this.afterProviderInsert(agentId);
     return { isNew: true };
   }

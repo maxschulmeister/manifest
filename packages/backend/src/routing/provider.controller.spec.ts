@@ -1,8 +1,9 @@
-import { NotFoundException } from '@nestjs/common';
+import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { ProviderController } from './provider.controller';
 import { ProviderService } from './routing-core/provider.service';
 import { ResolveAgentService } from './routing-core/resolve-agent.service';
 import { TierService } from './routing-core/tier.service';
+import { ManualModelService } from './routing-core/manual-model.service';
 import { ModelDiscoveryService } from '../model-discovery/model-discovery.service';
 import { OllamaSyncService } from '../database/ollama-sync.service';
 import { PricingSyncService } from '../database/pricing-sync.service';
@@ -20,6 +21,7 @@ describe('ProviderController', () => {
   let mockResolveAgent: Record<string, jest.Mock>;
   let mockTierService: Record<string, jest.Mock>;
   let mockPricingSync: Record<string, jest.Mock>;
+  let mockManualModelService: Record<string, jest.Mock>;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -49,6 +51,12 @@ describe('ProviderController', () => {
     mockPricingSync = {
       getAll: jest.fn().mockReturnValue(new Map([['model-1', {}]])),
     };
+    mockManualModelService = {
+      list: jest.fn().mockResolvedValue([]),
+      add: jest.fn().mockResolvedValue({ model_name: 'claude-secret' }),
+      updateSettings: jest.fn().mockResolvedValue({ model_name: 'claude-secret' }),
+      remove: jest.fn().mockResolvedValue(undefined),
+    };
 
     controller = new ProviderController(
       mockProviderService as unknown as ProviderService,
@@ -57,6 +65,7 @@ describe('ProviderController', () => {
       mockResolveAgent as unknown as ResolveAgentService,
       mockTierService as unknown as TierService,
       mockPricingSync as unknown as PricingSyncService,
+      mockManualModelService as unknown as ManualModelService,
     );
   });
 
@@ -238,6 +247,30 @@ describe('ProviderController', () => {
       );
 
       expect(result.map((m) => m.model_name)).toEqual(['nvidia/nemotron']);
+    });
+
+    it('flags manual models so the UI can badge and remove them', async () => {
+      mockProviderService.getProviders.mockResolvedValue([
+        {
+          provider: 'anthropic',
+          auth_type: 'api_key',
+          is_active: true,
+          cached_models: [
+            { id: 'claude-opus-4-6', displayName: 'Opus' },
+            { id: 'claude-secret', manual: true },
+          ],
+        },
+      ]);
+
+      const result = await controller.getProviderModels(
+        mockUser,
+        { agentName: 'test-agent', provider: 'anthropic' } as never,
+        { authType: 'api_key' } as never,
+      );
+
+      const manual = result.find((m) => m.model_name === 'claude-secret')!;
+      expect(manual.manual).toBe(true);
+      expect(result.find((m) => m.model_name === 'claude-opus-4-6')!.manual).toBe(false);
     });
   });
 
@@ -772,6 +805,112 @@ describe('ProviderController', () => {
         { id: 'p2', label: 'Work', priority: 0 },
         { id: 'p1', label: 'Personal', priority: 1 },
       ]);
+    });
+  });
+
+  /* ── manual models ── */
+  //
+  // The controller's responsibilities here are authz (resolve the agent),
+  // forwarding the result, and letting the service's exceptions surface as
+  // HTTP errors. The actual add/list/remove behaviour is covered by the
+  // service unit tests and the full HTTP flow in
+  // test/manual-models.e2e-spec.ts. We assert the controller's own contract
+  // (authz runs, result passes through, errors propagate) rather than spying
+  // on the internal service's call arguments.
+
+  describe('getManualModels', () => {
+    it('authorises via the agent resolver and forwards the service result', async () => {
+      mockManualModelService.list.mockResolvedValue([{ model_name: 'claude-secret' }]);
+
+      const result = await controller.getManualModels(
+        mockUser,
+        { agentName: 'test-agent', provider: 'anthropic' } as never,
+        { authType: 'api_key' } as never,
+      );
+
+      expect(mockResolveAgent.resolve).toHaveBeenCalledWith('user-1', 'test-agent');
+      expect(mockManualModelService.list).toHaveBeenCalledTimes(1);
+      expect(result).toEqual([{ model_name: 'claude-secret' }]);
+    });
+  });
+
+  describe('addManualModel', () => {
+    it('authorises and forwards the created manual model', async () => {
+      mockManualModelService.add.mockResolvedValue({ model_name: 'claude-secret' });
+
+      const result = await controller.addManualModel(
+        mockUser,
+        { agentName: 'test-agent', provider: 'anthropic' } as never,
+        { authType: 'api_key' } as never,
+        { model_name: 'claude-secret' },
+      );
+
+      expect(mockResolveAgent.resolve).toHaveBeenCalledWith('user-1', 'test-agent');
+      expect(result).toEqual({ model_name: 'claude-secret' });
+    });
+
+    it('propagates NotFound when the provider is not connected', async () => {
+      mockManualModelService.add.mockRejectedValue(new NotFoundException('not connected'));
+
+      await expect(
+        controller.addManualModel(
+          mockUser,
+          { agentName: 'test-agent', provider: 'anthropic' } as never,
+          { authType: 'api_key' } as never,
+          { model_name: 'x' },
+        ),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('propagates BadRequest when the model shadows a served one', async () => {
+      mockManualModelService.add.mockRejectedValue(new BadRequestException('already served'));
+
+      await expect(
+        controller.addManualModel(
+          mockUser,
+          { agentName: 'test-agent', provider: 'anthropic' } as never,
+          { authType: 'api_key' } as never,
+          { model_name: 'gpt-4o' },
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('updateManualModelSettings', () => {
+    it('authorises and forwards manual model parameter settings', async () => {
+      mockManualModelService.updateSettings.mockResolvedValue({
+        model_name: 'claude-secret',
+        param_defaults: { temperature: 0.2 },
+      });
+
+      const result = await controller.updateManualModelSettings(
+        mockUser,
+        { agentName: 'test-agent', provider: 'anthropic' } as never,
+        'claude-secret',
+        { authType: 'api_key' } as never,
+        { param_defaults: { temperature: 0.2 } },
+      );
+
+      expect(mockResolveAgent.resolve).toHaveBeenCalledWith('user-1', 'test-agent');
+      expect(result).toEqual({
+        model_name: 'claude-secret',
+        param_defaults: { temperature: 0.2 },
+      });
+    });
+  });
+
+  describe('removeManualModel', () => {
+    it('authorises and returns ok after the service removes the model', async () => {
+      const result = await controller.removeManualModel(
+        mockUser,
+        { agentName: 'test-agent', provider: 'anthropic' } as never,
+        'claude-secret',
+        { authType: 'api_key' } as never,
+      );
+
+      expect(mockResolveAgent.resolve).toHaveBeenCalledWith('user-1', 'test-agent');
+      expect(mockManualModelService.remove).toHaveBeenCalledTimes(1);
+      expect(result).toEqual({ ok: true });
     });
   });
 });

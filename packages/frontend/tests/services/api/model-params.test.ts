@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   getModelParamSpecs,
+  getCatalogModelParamSpecs,
   listModelParamSpecIndex,
   listModelParams,
   setModelParams,
@@ -42,6 +43,20 @@ describe('model-params API client', () => {
     expect(String(url)).toContain('authType=api_key');
     // Model names contain slashes, so they must be encoded in the query string.
     expect(String(url)).toContain('model=anthropic%2Fclaude-opus-4-7');
+  });
+
+  it('getCatalogModelParamSpecs GETs catalog specs with URL-encoded query params', async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve([]),
+    } as unknown as Response);
+    await getCatalogModelParamSpecs('demo', 'zai', 'api_key', 'glm-5.1');
+    const [url] = vi.mocked(fetch).mock.calls[0];
+    expect(String(url)).toContain('/routing/demo/model-param-specs/catalog/by-model');
+    expect(String(url)).toContain('provider=zai');
+    expect(String(url)).toContain('authType=api_key');
+    expect(String(url)).toContain('model=glm-5.1');
   });
 
   it('does not cache model specs in the frontend client', async () => {

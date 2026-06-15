@@ -102,6 +102,8 @@ describe('ProxyFallbackService.tryFallbacks — failure chain by status code', (
       } as unknown as AgentModelParamsService,
       {
         getSpecs: jest.fn().mockResolvedValue([]),
+        getSpecsForRoute: jest.fn().mockResolvedValue([]),
+        getParamDefaultsForRoute: jest.fn().mockResolvedValue(null),
         list: jest.fn().mockResolvedValue([]),
       } as unknown as ProviderParamSpecService,
     );

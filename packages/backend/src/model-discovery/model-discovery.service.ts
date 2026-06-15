@@ -28,6 +28,7 @@ import {
   buildModelsDevFallback,
   buildSubscriptionFallbackModels,
   supplementWithKnownModels,
+  supplementWithManualModels,
 } from './model-fallback';
 import { lookupKnownPrice } from './known-model-prices';
 import { mergeModelCapabilities, modelSupportsStreaming } from './model-capabilities';
@@ -219,6 +220,15 @@ export class ModelDiscoveryService {
     // always select them, even if the live API or OpenRouter didn't return them.
     if (provider.auth_type === 'subscription') {
       raw = supplementWithKnownModels(raw, provider.provider);
+    }
+
+    // Merge operator-added manual models before enrichment so they pick up
+    // pricing / capabilities / quality score through the same path as
+    // discovered models. Merging from `provider.manual_models` (the
+    // persistent source) — not from `cached_models` — is what makes manual
+    // models survive a refresh: cached_models is rebuilt every time.
+    if (provider.manual_models && provider.manual_models.length > 0) {
+      raw = supplementWithManualModels(raw, provider.manual_models, provider.provider);
     }
 
     // Preserve the full AuthType union (api_key / subscription / local) —

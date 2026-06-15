@@ -284,6 +284,16 @@ describe('ModelController', () => {
       });
     });
 
+    it('exposes the manual flag so the routing UI can badge manual models', async () => {
+      mockDiscoveryService.getModelsForAgent.mockResolvedValue([
+        makeDiscovered({ id: 'gpt-4o', manual: true }),
+      ]);
+
+      const result = await controller.getAvailableModels(mockUser, mockAgentName);
+
+      expect(result[0].manual).toBe(true);
+    });
+
     it('includes the per-request cost for OpenCode Go subscription models', async () => {
       mockDiscoveryService.getModelsForAgent.mockResolvedValue([
         makeDiscovered({
