@@ -335,8 +335,8 @@ export interface AvailableModel {
   input_modalities?: ModelModality[];
   output_modalities?: ModelModality[];
   quality_score: number;
-  display_name?: string;
-  provider_display_name?: string;
+  display_name?: string | null;
+  provider_display_name?: string | null;
   /** True for operator-added models the provider's /models endpoint omits. */
   manual?: boolean;
   param_schema_ref?: ParamSchemaRef | null;
