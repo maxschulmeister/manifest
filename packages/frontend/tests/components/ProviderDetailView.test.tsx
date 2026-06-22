@@ -28,6 +28,7 @@ interface AvailableModel {
   quality_score: number;
   manual?: boolean;
   param_schema_ref?: { provider: string; authType: AuthType; model: string } | null;
+  param_schema?: Record<string, unknown>[] | null;
   param_defaults?: Record<string, unknown> | null;
 }
 
@@ -405,8 +406,14 @@ describe('ProviderDetailView', () => {
         expect(textarea.value).toContain('"temperature": 0.7');
         expect(textarea.value).toContain('"top_p": 0.95');
       });
+      fireEvent.input(screen.getByLabelText('Custom parameter schema JSON'), {
+        target: {
+          value:
+            '[{\n  "path": "reasoning_effort",\n  "type": "enum",\n  "label": "Reasoning effort",\n  "description": "Controls reasoning effort.",\n  "default": "max",\n  "values": ["low", "medium", "high", "max"],\n  "group": "reasoning"\n}]',
+        },
+      });
       fireEvent.input(textarea, {
-        target: { value: '{\n  "temperature": 0.4,\n  "vendor": { "reasoning": true }\n}' },
+        target: { value: '{\n  "temperature": 0.4,\n  "reasoning_effort": "max"\n}' },
       });
       fireEvent.click(screen.getByText('Save'));
 
@@ -418,7 +425,18 @@ describe('ProviderDetailView', () => {
           'glm-5.2',
           {
             param_schema_ref: { provider: 'zai', authType: 'api_key', model: 'glm-5.1' },
-            param_defaults: { temperature: 0.4, vendor: { reasoning: true } },
+            param_schema: [
+              {
+                path: 'reasoning_effort',
+                type: 'enum',
+                label: 'Reasoning effort',
+                description: 'Controls reasoning effort.',
+                default: 'max',
+                values: ['low', 'medium', 'high', 'max'],
+                group: 'reasoning',
+              },
+            ],
+            param_defaults: { temperature: 0.4, reasoning_effort: 'max' },
           },
         );
       });

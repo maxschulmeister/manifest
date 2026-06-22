@@ -652,6 +652,21 @@
   color: transparent;
 }
 
+.manual-model-settings__textarea--plain {
+  position: static;
+  min-height: 140px;
+  height: 140px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  resize: vertical;
+  background: hsl(var(--muted) / 0.24);
+  color: hsl(var(--foreground));
+}
+
+.manual-model-settings__textarea--plain::selection {
+  color: hsl(var(--foreground));
+}
+
 .manual-model-settings__error {
   margin-top: 0;
 }

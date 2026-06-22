@@ -30,6 +30,7 @@ import {
   compareProviderParamSpecs,
   providerParamIsApplicable,
   setProviderParamValue,
+  type ModelParamDefinition,
   type ProviderParamSpec,
   type RequestParamDefaults,
 } from 'manifest-shared';
@@ -132,6 +133,7 @@ const ProviderDetailView: Component<ProviderDetailViewProps> = (props) => {
   const [manualModelError, setManualModelError] = createSignal<string | null>(null);
   const [settingsModel, setSettingsModel] = createSignal<AvailableModel | null>(null);
   const [settingsSchemaValue, setSettingsSchemaValue] = createSignal('');
+  const [settingsCustomSchemaJson, setSettingsCustomSchemaJson] = createSignal('[]');
   const [settingsJson, setSettingsJson] = createSignal('{}');
   const [settingsSchemaKeySignature, setSettingsSchemaKeySignature] = createSignal<string | null>(
     null,
@@ -377,6 +379,16 @@ const ProviderDetailView: Component<ProviderDetailViewProps> = (props) => {
     return Object.keys(parsed).length === 0 ? null : (parsed as RequestParamDefaults);
   };
 
+  const parseSettingsCustomSchemaJson = (): ModelParamDefinition[] | null => {
+    const raw = settingsCustomSchemaJson().trim();
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) {
+      throw new Error('Parameter schema must be an array.');
+    }
+    return parsed.length === 0 ? null : (parsed as ModelParamDefinition[]);
+  };
+
   const scrollToBottomOfModels = () =>
     requestAnimationFrame(() => {
       if (modelsScrollRef) modelsScrollRef.scrollTop = modelsScrollRef.scrollHeight;
@@ -420,6 +432,7 @@ const ProviderDetailView: Component<ProviderDetailViewProps> = (props) => {
   const openManualModelSettings = (model: AvailableModel) => {
     setSettingsModel(model);
     setSettingsSchemaValue(model.param_schema_ref ? schemaValue(model.param_schema_ref) : '');
+    setSettingsCustomSchemaJson(JSON.stringify(model.param_schema ?? [], null, 2));
     setSettingsSchemaKeySignature(null);
     setSettingsJson(JSON.stringify(model.param_defaults ?? {}, null, 2));
     setSettingsError(null);
@@ -440,8 +453,10 @@ const ProviderDetailView: Component<ProviderDetailViewProps> = (props) => {
     if (!model || settingsSaving()) return;
     setSettingsError(null);
     let paramDefaults: RequestParamDefaults | null;
+    let paramSchema: ModelParamDefinition[] | null;
     try {
       paramDefaults = parseSettingsJson();
+      paramSchema = parseSettingsCustomSchemaJson();
     } catch (err) {
       setSettingsError(err instanceof Error ? err.message : 'Invalid JSON.');
       return;
@@ -456,6 +471,7 @@ const ProviderDetailView: Component<ProviderDetailViewProps> = (props) => {
         model.model_name,
         {
           param_schema_ref: selectedSettingsParamSchemaRef(),
+          param_schema: paramSchema,
           param_defaults: paramDefaults,
         },
       );
@@ -824,6 +840,28 @@ const ProviderDetailView: Component<ProviderDetailViewProps> = (props) => {
                   compact
                   showGroupHeaders={false}
                   onSelect={handleSettingsSchemaSelect}
+                />
+              </div>
+
+              <div class="manual-model-settings__section">
+                <label class="provider-detail__label" for="manual-model-settings-schema-json">
+                  Custom parameter schema
+                </label>
+                <p class="provider-detail__hint">
+                  Optional array of modelparams.dev-style parameter definitions. Use this for extra
+                  keys not covered by the selected schema source.
+                </p>
+                <textarea
+                  id="manual-model-settings-schema-json"
+                  class="manual-model-settings__textarea manual-model-settings__textarea--plain"
+                  aria-label="Custom parameter schema JSON"
+                  spellcheck={false}
+                  value={settingsCustomSchemaJson()}
+                  disabled={settingsSaving()}
+                  onInput={(e) => {
+                    setSettingsCustomSchemaJson(e.currentTarget.value);
+                    setSettingsError(null);
+                  }}
                 />
               </div>
 

@@ -3,6 +3,7 @@ import type {
   FallbackRouteTarget,
   ModelCapability,
   ModelModality,
+  ModelParamDefinition,
   ModelRoute,
   RouteTarget,
   ResponseMode,
@@ -340,6 +341,7 @@ export interface AvailableModel {
   /** True for operator-added models the provider's /models endpoint omits. */
   manual?: boolean;
   param_schema_ref?: ParamSchemaRef | null;
+  param_schema?: ModelParamDefinition[] | null;
   param_defaults?: RequestParamDefaults | null;
 }
 
@@ -378,6 +380,7 @@ export interface ManualModel {
   output_price_per_million_tokens?: number;
   context_window?: number;
   param_schema_ref?: ParamSchemaRef | null;
+  param_schema?: ModelParamDefinition[] | null;
   param_defaults?: RequestParamDefaults | null;
 }
 
@@ -404,7 +407,7 @@ export function updateManualModelSettings(
   provider: string,
   authType: AuthType,
   modelId: string,
-  settings: Pick<ManualModel, 'param_schema_ref' | 'param_defaults'>,
+  settings: Pick<ManualModel, 'param_schema_ref' | 'param_schema' | 'param_defaults'>,
 ) {
   return fetchMutate<ManualModel>(
     `${routingPath(agentName, `providers/${encodeURIComponent(provider)}/manual-models/${encodeURIComponent(modelId)}`)}?authType=${authType}`,
