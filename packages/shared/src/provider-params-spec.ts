@@ -11,16 +11,21 @@ export const MODEL_CAPABILITIES = [...MODEL_MODALITIES, 'stream', 'tools'] as co
 
 export type ModelCapability = (typeof MODEL_CAPABILITIES)[number];
 
-export type ModelParamType = 'boolean' | 'enum' | 'integer' | 'number' | 'string';
+export const MODEL_PARAM_TYPES = ['boolean', 'enum', 'integer', 'number', 'string'] as const;
 
-export type ModelParamGroup =
-  | 'generation_length'
-  | 'sampling'
-  | 'reasoning'
-  | 'tooling'
-  | 'output_format'
-  | 'observability'
-  | 'provider_metadata';
+export type ModelParamType = (typeof MODEL_PARAM_TYPES)[number];
+
+export const MODEL_PARAM_GROUPS = [
+  'generation_length',
+  'sampling',
+  'reasoning',
+  'tooling',
+  'output_format',
+  'observability',
+  'provider_metadata',
+] as const;
+
+export type ModelParamGroup = (typeof MODEL_PARAM_GROUPS)[number];
 
 export interface ModelParamRange {
   min?: number;
@@ -249,6 +254,27 @@ export function providerParamValueIsValid(spec: ModelParamDefinition, value: unk
   return false;
 }
 
+export function isModelParamDefinition(value: unknown): value is ModelParamDefinition {
+  if (!isRecord(value)) return false;
+  if (!isNonEmptyString(value.path) || !isProviderParamPath(value.path)) return false;
+  if (!isModelParamType(value.type)) return false;
+  if (!isNonEmptyString(value.label)) return false;
+  if (!isNonEmptyString(value.description)) return false;
+  if (!isModelParamGroup(value.group)) return false;
+  if (value.range !== undefined && !isModelParamRange(value.range)) return false;
+  if (value.values !== undefined && !isJsonValueArray(value.values)) return false;
+  if (value.type === 'enum' && (!Array.isArray(value.values) || value.values.length === 0)) {
+    return false;
+  }
+  if (value.applicability !== undefined && !isParamApplicability(value.applicability)) {
+    return false;
+  }
+
+  const spec = value as unknown as ModelParamDefinition;
+  if (spec.default !== undefined && !providerParamValueIsValid(spec, spec.default)) return false;
+  return true;
+}
+
 export function omitProviderInapplicableParams<T extends Record<string, unknown>>(
   params: T,
   specs: readonly ProviderParamSpec[],
@@ -384,6 +410,41 @@ function isComparableValue(value: unknown): value is JsonPrimitive | readonly Js
 
 function isJsonPrimitive(value: unknown): value is JsonPrimitive {
   return value === null || ['string', 'number', 'boolean'].includes(typeof value);
+}
+
+function isJsonValue(value: unknown): value is JsonValue {
+  if (isJsonPrimitive(value)) return true;
+  if (Array.isArray(value)) return value.every(isJsonValue);
+  if (!isRecord(value)) return false;
+  return Object.values(value).every(isJsonValue);
+}
+
+function isJsonValueArray(value: unknown): value is readonly JsonValue[] {
+  return Array.isArray(value) && value.length > 0 && value.every(isJsonValue);
+}
+
+function isModelParamType(value: unknown): value is ModelParamType {
+  return typeof value === 'string' && (MODEL_PARAM_TYPES as readonly string[]).includes(value);
+}
+
+function isModelParamGroup(value: unknown): value is ModelParamGroup {
+  return typeof value === 'string' && (MODEL_PARAM_GROUPS as readonly string[]).includes(value);
+}
+
+function isModelParamRange(value: unknown): value is ModelParamRange {
+  if (!isRecord(value)) return false;
+  if (value.min !== undefined && !isFiniteNumber(value.min)) return false;
+  if (value.max !== undefined && !isFiniteNumber(value.max)) return false;
+  if (value.step !== undefined && (!isFiniteNumber(value.step) || value.step <= 0)) return false;
+  return true;
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
 }
 
 function getPath(values: Record<string, unknown>, path: string): unknown {

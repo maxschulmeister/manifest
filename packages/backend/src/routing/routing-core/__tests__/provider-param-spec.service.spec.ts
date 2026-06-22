@@ -167,6 +167,48 @@ describe('ProviderParamSpecService', () => {
     });
   });
 
+  it('merges manual custom parameter schema with the referenced schema', async () => {
+    mockRemoteCatalog();
+    const repo = {
+      findOne: jest.fn().mockResolvedValue({
+        manual_models: [
+          {
+            model_name: 'glm-5.2',
+            param_schema_ref: {
+              provider: 'anthropic',
+              authType: 'api_key',
+              model: 'claude-sonnet-4-6',
+            },
+            param_schema: [
+              {
+                path: 'reasoning_effort',
+                type: 'enum',
+                label: 'Reasoning effort',
+                description: 'Controls reasoning effort.',
+                default: 'max',
+                values: ['low', 'medium', 'high', 'max'],
+                group: 'reasoning',
+              },
+            ],
+          },
+        ],
+      }),
+    };
+    const service = new ProviderParamSpecService(repo as never);
+    await service.refreshCache();
+
+    const result = await service.getSpecsForRoute('agent-1', 'zai', 'api_key', 'glm-5.2');
+
+    expect(result.map((spec) => spec.path)).toEqual(['reasoning_effort', 'thinking.type']);
+    expect(result.find((spec) => spec.path === 'reasoning_effort')).toMatchObject({
+      provider: 'zai',
+      authType: 'api_key',
+      model: 'glm-5.2',
+      type: 'enum',
+      values: ['low', 'medium', 'high', 'max'],
+    });
+  });
+
   it('returns custom JSON defaults saved on a manual model route', async () => {
     const repo = {
       findOne: jest.fn().mockResolvedValue({

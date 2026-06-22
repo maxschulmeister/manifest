@@ -180,6 +180,7 @@ export class ModelController {
           }),
           ...(m.manual ? { manual: true } : {}),
           ...(m.paramSchemaRef ? { param_schema_ref: m.paramSchemaRef } : {}),
+          ...(m.paramSchema ? { param_schema: m.paramSchema } : {}),
           ...(m.paramDefaults ? { param_defaults: m.paramDefaults } : {}),
         };
       }),

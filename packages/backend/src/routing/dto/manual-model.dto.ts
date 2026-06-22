@@ -13,7 +13,13 @@ import {
   type ValidatorConstraintInterface,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { AUTH_TYPES, type AuthType, type RequestParamDefaults } from 'manifest-shared';
+import {
+  AUTH_TYPES,
+  isModelParamDefinition,
+  type AuthType,
+  type ModelParamDefinition,
+  type RequestParamDefaults,
+} from 'manifest-shared';
 
 /**
  * A single model the operator adds to an integrated provider because the
@@ -48,11 +54,26 @@ class ManualModelParamDefaultsConstraint implements ValidatorConstraintInterface
   }
 }
 
+@ValidatorConstraint({ name: 'manualModelParamSchema', async: false })
+class ManualModelParamSchemaConstraint implements ValidatorConstraintInterface {
+  validate(value: unknown): boolean {
+    return Array.isArray(value) && value.every(isModelParamDefinition);
+  }
+
+  defaultMessage(): string {
+    return 'param_schema must be an array of model parameter definitions';
+  }
+}
+
 export class ManualModelSettingsDto {
   @IsOptional()
   @ValidateNested()
   @Type(() => ParamSchemaRefDto)
   param_schema_ref?: ParamSchemaRefDto | null;
+
+  @IsOptional()
+  @Validate(ManualModelParamSchemaConstraint)
+  param_schema?: ModelParamDefinition[] | null;
 
   @IsOptional()
   @IsObject()
@@ -88,6 +109,10 @@ export class ManualModelDto {
   @ValidateNested()
   @Type(() => ParamSchemaRefDto)
   param_schema_ref?: ParamSchemaRefDto | null;
+
+  @IsOptional()
+  @Validate(ManualModelParamSchemaConstraint)
+  param_schema?: ModelParamDefinition[] | null;
 
   @IsOptional()
   @IsObject()

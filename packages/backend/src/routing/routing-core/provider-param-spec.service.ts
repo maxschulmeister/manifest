@@ -186,17 +186,16 @@ export class ProviderParamSpecService implements OnModuleInit {
 
     const manual = await this.getManualModel(agentId, providerId, authType, model);
     const ref = manual?.param_schema_ref ?? null;
-    if (ref) {
-      const referenced = await this.getSpecs(ref.provider, ref.authType, ref.model);
-      return referenced.map((spec) => ({
-        ...spec,
-        provider: normalizeProviderParamProviderId(providerId),
-        authType,
-        model,
-      }));
-    }
-
-    return this.getSpecs(providerId, authType, model);
+    const referenced = ref ? await this.getSpecs(ref.provider, ref.authType, ref.model) : [];
+    const direct = ref ? [] : await this.getSpecs(providerId, authType, model);
+    const custom = Array.isArray(manual?.param_schema) ? manual.param_schema : [];
+    const merged = mergeParamDefinitions([...referenced, ...direct], custom);
+    return merged.map((spec) => ({
+      ...spec,
+      provider: normalizeProviderParamProviderId(providerId),
+      authType,
+      model,
+    }));
   }
 
   async getParamDefaultsForRoute(
@@ -366,6 +365,16 @@ function metadataMatchesRoute(
 ): boolean {
   const normalizedProvider = providerId ? normalizeProviderParamProviderId(providerId) : providerId;
   return metadata.provider === normalizedProvider && metadata.model === model;
+}
+
+function mergeParamDefinitions(
+  base: readonly ModelParamDefinition[],
+  custom: readonly ModelParamDefinition[],
+): readonly ModelParamDefinition[] {
+  const byPath = new Map<string, ModelParamDefinition>();
+  for (const spec of base) byPath.set(spec.path, spec);
+  for (const spec of custom) byPath.set(spec.path, spec);
+  return [...byPath.values()].sort(compareProviderParamSpecs);
 }
 
 function withRouteIdentity(

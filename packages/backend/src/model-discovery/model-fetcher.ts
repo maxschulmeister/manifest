@@ -6,7 +6,12 @@
  * DiscoveredModel objects cached in user_providers.cached_models.
  */
 
-import type { AuthType, ModelCapability, ModelModality } from 'manifest-shared';
+import type {
+  AuthType,
+  ModelCapability,
+  ModelModality,
+  ModelParamDefinition,
+} from 'manifest-shared';
 
 /**
  * Default context-window size assumed when a provider's API or the pricing
@@ -42,6 +47,8 @@ export interface DiscoveredModel {
     authType: AuthType;
     model: string;
   } | null;
+  /** Custom parameter definitions configured for an operator-added model. */
+  paramSchema?: readonly ModelParamDefinition[] | null;
   /** Raw JSON request-body defaults configured for an operator-added model. */
   paramDefaults?: unknown | null;
 }

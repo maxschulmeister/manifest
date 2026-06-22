@@ -5,6 +5,7 @@ import {
   getProviderModelCapabilities,
   getProviderParamValue,
   getProviderParamSpecs,
+  isModelParamDefinition,
   isParamApplicability,
   isProviderParamPath,
   omitProviderInapplicableParams,
@@ -337,6 +338,43 @@ describe('provider-params-spec', () => {
       expect(pickProviderCompatibleParams({ thinking: { type: 'enabled' } }, specs)).toEqual({
         thinking: { type: 'enabled', budget_tokens: 4096 },
       });
+    });
+  });
+
+  describe('isModelParamDefinition', () => {
+    it('accepts custom enum schemas and rejects invalid schema definitions', () => {
+      expect(
+        isModelParamDefinition({
+          path: 'reasoning_effort',
+          type: 'enum',
+          label: 'Reasoning effort',
+          description: 'Controls reasoning effort.',
+          default: 'max',
+          values: ['low', 'medium', 'high', 'max'],
+          group: 'reasoning',
+        }),
+      ).toBe(true);
+
+      expect(
+        isModelParamDefinition({
+          path: 'reasoning_effort',
+          type: 'enum',
+          label: 'Reasoning effort',
+          description: 'Controls reasoning effort.',
+          default: 'extreme',
+          values: ['low', 'medium', 'high', 'max'],
+          group: 'reasoning',
+        }),
+      ).toBe(false);
+      expect(
+        isModelParamDefinition({
+          path: '__proto__.polluted',
+          type: 'string',
+          label: 'Unsafe',
+          description: 'Unsafe path.',
+          group: 'provider_metadata',
+        }),
+      ).toBe(false);
     });
   });
 

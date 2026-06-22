@@ -322,6 +322,7 @@ export class ProviderController {
       output_modalities: m.outputModalities ?? [],
       manual: m.manual === true,
       param_schema_ref: m.paramSchemaRef ?? null,
+      param_schema: m.paramSchema ?? null,
       param_defaults: m.paramDefaults ?? null,
     }));
   }

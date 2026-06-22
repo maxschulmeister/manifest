@@ -81,6 +81,7 @@ export class ManualModelService {
           : {}),
         ...(dto.context_window != null ? { context_window: dto.context_window } : {}),
         ...(dto.param_schema_ref ? { param_schema_ref: dto.param_schema_ref } : {}),
+        ...(dto.param_schema ? { param_schema: dto.param_schema } : {}),
         ...(dto.param_defaults ? { param_defaults: dto.param_defaults } : {}),
       };
     }
@@ -105,6 +106,7 @@ export class ManualModelService {
       entry.output_price_per_million_tokens = dto.output_price_per_million_tokens;
     if (dto.context_window != null) entry.context_window = dto.context_window;
     if (dto.param_schema_ref) entry.param_schema_ref = dto.param_schema_ref;
+    if (dto.param_schema) entry.param_schema = dto.param_schema;
     if (dto.param_defaults) entry.param_defaults = dto.param_defaults;
 
     for (const row of rows) {
@@ -147,6 +149,7 @@ export class ManualModelService {
 
       const next = { ...manual[index]! };
       if ('param_schema_ref' in dto) next.param_schema_ref = dto.param_schema_ref ?? null;
+      if ('param_schema' in dto) next.param_schema = dto.param_schema ?? null;
       if ('param_defaults' in dto) next.param_defaults = dto.param_defaults ?? null;
       row.manual_models = manual.map((item, i) => (i === index ? next : item));
 
@@ -156,6 +159,7 @@ export class ManualModelService {
             ? {
                 ...model,
                 paramSchemaRef: next.param_schema_ref ?? null,
+                ...('param_schema' in dto ? { paramSchema: next.param_schema ?? null } : {}),
                 paramDefaults: next.param_defaults ?? null,
               }
             : model,

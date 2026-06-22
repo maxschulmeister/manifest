@@ -404,6 +404,7 @@ export function supplementWithManualModels(
       qualityScore: 3,
       manual: true,
       ...(entry.param_schema_ref ? { paramSchemaRef: entry.param_schema_ref } : {}),
+      ...(entry.param_schema ? { paramSchema: entry.param_schema } : {}),
       ...(entry.param_defaults ? { paramDefaults: entry.param_defaults } : {}),
     });
   }
