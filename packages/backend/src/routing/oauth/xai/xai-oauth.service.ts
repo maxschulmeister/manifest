@@ -204,17 +204,27 @@ export class XaiOauthService {
         parse: parseOAuthTokenBlob,
         refresh: (current) => this.refreshAccessToken(current.r),
         persist: (refreshed) =>
-          this.providerService
-            .upsertProvider(
-              agentId,
-              userId,
-              'xai',
-              serializeOAuthTokenBlob(refreshed),
-              'subscription',
-              undefined,
-              keyLabel,
-            )
-            .then(() => undefined),
+          keyLabel
+            ? this.providerService
+                .replaceProviderCredentialByLabel(
+                  agentId,
+                  'xai',
+                  serializeOAuthTokenBlob(refreshed),
+                  'subscription',
+                  undefined,
+                  keyLabel,
+                )
+                .then(() => undefined)
+            : this.providerService
+                .upsertProvider(
+                  agentId,
+                  userId,
+                  'xai',
+                  serializeOAuthTokenBlob(refreshed),
+                  'subscription',
+                  undefined,
+                )
+                .then(() => undefined),
       });
       return resolved.t;
     } catch (err) {

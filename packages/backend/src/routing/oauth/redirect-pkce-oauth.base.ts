@@ -286,17 +286,27 @@ export abstract class RedirectPkceOauthBaseService {
         parse: parseOAuthTokenBlob,
         refresh: (current) => this.refreshAccessToken(current.r, current.u),
         persist: (refreshed) =>
-          this.providerService
-            .upsertProvider(
-              agentId,
-              userId,
-              providerId,
-              serializeOAuthTokenBlob(refreshed),
-              'subscription',
-              undefined,
-              keyLabel,
-            )
-            .then(() => undefined),
+          keyLabel
+            ? this.providerService
+                .replaceProviderCredentialByLabel(
+                  agentId,
+                  providerId,
+                  serializeOAuthTokenBlob(refreshed),
+                  'subscription',
+                  undefined,
+                  keyLabel,
+                )
+                .then(() => undefined)
+            : this.providerService
+                .upsertProvider(
+                  agentId,
+                  userId,
+                  providerId,
+                  serializeOAuthTokenBlob(refreshed),
+                  'subscription',
+                  undefined,
+                )
+                .then(() => undefined),
       });
       return resolved.t;
     } catch (err) {

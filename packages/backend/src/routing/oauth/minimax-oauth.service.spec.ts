@@ -350,8 +350,15 @@ describe('MinimaxOauthService', () => {
       );
       const out = await svc.unwrapToken(JSON.stringify(blob), 'agent-1', 'user-1', 'Work');
       expect(out?.t).toBe('new');
-      expect(provider.upsertProvider).toHaveBeenCalled();
-      expect(provider.upsertProvider.mock.calls[0][6]).toBe('Work');
+      expect(provider.upsertProvider).not.toHaveBeenCalled();
+      expect(provider.replaceProviderCredentialByLabel).toHaveBeenCalledWith(
+        'agent-1',
+        'minimax',
+        expect.stringContaining('"t":"new"'),
+        'subscription',
+        undefined,
+        'Work',
+      );
     });
 
     it('returns the original blob (not null) when refresh fails', async () => {

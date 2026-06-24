@@ -260,17 +260,27 @@ export class KiroOauthService {
         parse: parseKiroOAuthTokenBlob,
         refresh: (current) => this.refreshAccessToken(current),
         persist: (refreshed) =>
-          this.providerService
-            .upsertProvider(
-              agentId,
-              userId,
-              'kiro',
-              serializeKiroOAuthTokenBlob(refreshed),
-              'subscription',
-              undefined,
-              keyLabel,
-            )
-            .then(() => undefined),
+          keyLabel
+            ? this.providerService
+                .replaceProviderCredentialByLabel(
+                  agentId,
+                  'kiro',
+                  serializeKiroOAuthTokenBlob(refreshed),
+                  'subscription',
+                  undefined,
+                  keyLabel,
+                )
+                .then(() => undefined)
+            : this.providerService
+                .upsertProvider(
+                  agentId,
+                  userId,
+                  'kiro',
+                  serializeKiroOAuthTokenBlob(refreshed),
+                  'subscription',
+                  undefined,
+                )
+                .then(() => undefined),
       });
       return resolved.t;
     } catch (err) {

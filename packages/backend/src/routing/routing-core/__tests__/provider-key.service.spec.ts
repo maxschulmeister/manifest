@@ -105,6 +105,16 @@ describe('ProviderKeyService', () => {
         undefined,
       );
     });
+
+    it('returns null instead of falling back when a requested label is missing', async () => {
+      routingCache.getProviderKeys.mockReturnValue([
+        { id: 'p1', label: 'Default', priority: 0, apiKey: 'default-key', region: null },
+      ]);
+
+      await expect(
+        svc.getProviderApiKey('agent-1', 'openai', 'subscription', 'Work'),
+      ).resolves.toBeNull();
+    });
   });
 
   describe('resolveProviderApiKey via getProviderApiKey', () => {

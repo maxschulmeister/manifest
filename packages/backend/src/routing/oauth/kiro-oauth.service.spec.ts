@@ -447,9 +447,15 @@ describe('KiroOauthService', () => {
         }),
       );
       expect(await service.unwrapToken(raw, 'agent-1', 'user-1', 'Work')).toBe('fresh-access');
-      const saved = parseKiroOAuthTokenBlob(provider.upsertProvider.mock.calls[0][3] as string);
-      expect(saved).toMatchObject({ t: 'fresh-access', r: 'fresh-refresh' });
-      expect(provider.upsertProvider.mock.calls[0][6]).toBe('Work');
+      expect(provider.upsertProvider).not.toHaveBeenCalled();
+      expect(provider.replaceProviderCredentialByLabel).toHaveBeenCalledWith(
+        'agent-1',
+        'kiro',
+        expect.stringContaining('"t":"fresh-access"'),
+        'subscription',
+        undefined,
+        'Work',
+      );
     });
 
     it('keeps the old refresh token when the refresh response omits one', async () => {

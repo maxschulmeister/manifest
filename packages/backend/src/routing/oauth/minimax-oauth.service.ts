@@ -311,17 +311,27 @@ export class MinimaxOauthService {
         parse: parseMinimaxBlob,
         refresh: (current) => this.refreshAccessToken(current.r, current.u),
         persist: (refreshed) =>
-          this.providerService
-            .upsertProvider(
-              agentId,
-              userId,
-              'minimax',
-              JSON.stringify(refreshed),
-              'subscription',
-              undefined,
-              keyLabel,
-            )
-            .then(() => undefined),
+          keyLabel
+            ? this.providerService
+                .replaceProviderCredentialByLabel(
+                  agentId,
+                  'minimax',
+                  JSON.stringify(refreshed),
+                  'subscription',
+                  undefined,
+                  keyLabel,
+                )
+                .then(() => undefined)
+            : this.providerService
+                .upsertProvider(
+                  agentId,
+                  userId,
+                  'minimax',
+                  JSON.stringify(refreshed),
+                  'subscription',
+                  undefined,
+                )
+                .then(() => undefined),
       });
     } catch (err) {
       this.logger.error(`Failed to refresh MiniMax token: ${err}`);

@@ -215,9 +215,9 @@ describe('XaiOauthService', () => {
       'https://auth.x.ai/oauth2/token',
       expect.objectContaining({ method: 'POST' }),
     );
-    expect(providerService.upsertProvider).toHaveBeenCalledWith(
+    expect(providerService.upsertProvider).not.toHaveBeenCalled();
+    expect(providerService.replaceProviderCredentialByLabel).toHaveBeenCalledWith(
       'agent-1',
-      'user-1',
       'xai',
       expect.stringContaining('"t":"new-access"'),
       'subscription',

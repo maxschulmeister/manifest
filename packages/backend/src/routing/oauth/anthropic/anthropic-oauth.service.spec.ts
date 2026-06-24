@@ -425,9 +425,9 @@ describe('AnthropicOauthService', () => {
       );
       const token = await svc.unwrapToken(blob, 'agent-1', 'user-1', 'Work');
       expect(token).toBe('new');
-      expect(providerService.upsertProvider).toHaveBeenCalledWith(
+      expect(providerService.upsertProvider).not.toHaveBeenCalled();
+      expect(providerService.replaceProviderCredentialByLabel).toHaveBeenCalledWith(
         'agent-1',
-        'user-1',
         'anthropic',
         expect.stringContaining('"t":"new"'),
         'subscription',

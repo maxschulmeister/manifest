@@ -29,6 +29,7 @@ function createConfig(nodeEnv = 'production'): ConfigService {
 function createProviderService(): {
   svc: ProviderService;
   upsertProvider: jest.Mock;
+  replaceProviderCredentialByLabel: jest.Mock;
   recalculateTiers: jest.Mock;
   nextOAuthLabel: jest.Mock;
   getFreshSubscriptionCredential: jest.Mock;
@@ -345,7 +346,6 @@ describe('GeminiOauthService', () => {
         expect.stringContaining('"u":"proj-abc"'),
         'subscription',
         undefined,
-        undefined,
       );
     });
 
@@ -356,9 +356,9 @@ describe('GeminiOauthService', () => {
       );
       const token = await svc.unwrapToken(JSON.stringify(blob), 'agent-1', 'user-1', 'Work');
       expect(token).toBe('new');
-      expect(providerService.upsertProvider).toHaveBeenCalledWith(
+      expect(providerService.upsertProvider).not.toHaveBeenCalled();
+      expect(providerService.replaceProviderCredentialByLabel).toHaveBeenCalledWith(
         'agent-1',
-        'user-1',
         'gemini',
         expect.stringContaining('"t":"new"'),
         'subscription',

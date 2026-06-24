@@ -240,17 +240,27 @@ export class AnthropicOauthService {
         parse: parseOAuthTokenBlob,
         refresh: (current) => this.refreshAccessToken(current.r),
         persist: (refreshed) =>
-          this.providerService
-            .upsertProvider(
-              agentId,
-              userId,
-              'anthropic',
-              serializeOAuthTokenBlob(refreshed),
-              'subscription',
-              undefined,
-              keyLabel,
-            )
-            .then(() => undefined),
+          keyLabel
+            ? this.providerService
+                .replaceProviderCredentialByLabel(
+                  agentId,
+                  'anthropic',
+                  serializeOAuthTokenBlob(refreshed),
+                  'subscription',
+                  undefined,
+                  keyLabel,
+                )
+                .then(() => undefined)
+            : this.providerService
+                .upsertProvider(
+                  agentId,
+                  userId,
+                  'anthropic',
+                  serializeOAuthTokenBlob(refreshed),
+                  'subscription',
+                  undefined,
+                )
+                .then(() => undefined),
       });
       return resolved.t;
     } catch (err) {

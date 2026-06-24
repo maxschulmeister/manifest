@@ -72,7 +72,7 @@ export class ProviderKeyService {
     if (keys.length === 0) return null;
     if (label) {
       const match = keys.find((k) => k.label.toLowerCase() === label.toLowerCase());
-      if (match) return match.apiKey;
+      return match?.apiKey ?? null;
     }
     return keys[0].apiKey;
   }
