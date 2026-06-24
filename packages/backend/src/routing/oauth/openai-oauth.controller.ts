@@ -44,6 +44,7 @@ export class OpenaiOauthController {
     @Query('agentName') agentName: string,
     @CurrentUser() user: AuthUser,
     @Req() req: Request,
+    @Query('label') label?: string | string[],
   ) {
     if (!agentName) {
       throw new HttpException('agentName query parameter is required', HttpStatus.BAD_REQUEST);
@@ -55,7 +56,10 @@ export class OpenaiOauthController {
     const trustedBackendUrl = this.configService.get<string>('BETTER_AUTH_URL');
     const backendUrl = trustedBackendUrl || `${req.protocol}://${req.get('host')}`;
     try {
-      const url = await this.oauthService.generateAuthorizationUrl(agent.id, user.id, backendUrl);
+      const keyLabel = optionalTrimmedStringQuery(label, 'label');
+      const url = keyLabel
+        ? await this.oauthService.generateAuthorizationUrl(agent.id, user.id, backendUrl, keyLabel)
+        : await this.oauthService.generateAuthorizationUrl(agent.id, user.id, backendUrl);
       return { url };
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to start OAuth callback server';

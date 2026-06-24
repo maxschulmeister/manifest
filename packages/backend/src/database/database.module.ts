@@ -114,6 +114,7 @@ import { AddDedupCompositeIndex1790200000000 } from './migrations/1790200000000-
 import { AddErrorsPartialIndex1790300000000 } from './migrations/1790300000000-AddErrorsPartialIndex';
 import { DropRedundantAgentApiKeyPrefixIndex1790400000000 } from './migrations/1790400000000-DropRedundantAgentApiKeyPrefixIndex';
 import { AddManualModels1790500000000 } from './migrations/1790500000000-AddManualModels';
+import { AddOAuthPendingFlowLabel1790600000000 } from './migrations/1790600000000-AddOAuthPendingFlowLabel';
 
 const entities = [
   AgentMessage,
@@ -229,6 +230,7 @@ const migrations = [
   AddErrorsPartialIndex1790300000000,
   DropRedundantAgentApiKeyPrefixIndex1790400000000,
   AddManualModels1790500000000,
+  AddOAuthPendingFlowLabel1790600000000,
 ];
 
 @Module({

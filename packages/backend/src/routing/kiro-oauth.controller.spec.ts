@@ -69,6 +69,32 @@ describe('KiroOauthController', () => {
       });
     });
 
+    it('passes a requested key label into the device flow', async () => {
+      resolveAgent.resolve.mockResolvedValue({ id: 'agent-id-1' } as never);
+      oauthService.startAuthorization.mockResolvedValue({
+        flowId: 'flow-1',
+        userCode: 'AAAA-BBBB',
+        verificationUri: 'https://verify',
+        expiresAt: 123,
+        pollIntervalMs: 5000,
+      });
+
+      await controller.start(
+        'my-agent',
+        { id: 'user-1' } as never,
+        undefined,
+        undefined,
+        'Primary',
+      );
+
+      expect(oauthService.startAuthorization).toHaveBeenCalledWith(
+        'agent-id-1',
+        'user-1',
+        undefined,
+        'Primary',
+      );
+    });
+
     it('throws 400 when agentName is missing', async () => {
       await expect(controller.start('', { id: 'user-1' } as never)).rejects.toThrow(HttpException);
     });

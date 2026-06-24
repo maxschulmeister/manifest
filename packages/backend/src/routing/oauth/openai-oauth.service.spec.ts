@@ -158,6 +158,36 @@ describe('OpenaiOauthService', () => {
       expect(svc.getPendingCount()).toBe(0);
     });
 
+    it('overwrites the labeled key captured when the refresh flow started', async () => {
+      fetchMock.mockResolvedValue(
+        mockResponse(200, {
+          access_token: 'refreshed-access',
+          refresh_token: 'refreshed-refresh',
+          expires_in: 3600,
+        }),
+      );
+      const url = await svc.generateAuthorizationUrl(
+        'agent-1',
+        'user-1',
+        'http://localhost:3001',
+        'Work account',
+      );
+      const state = new URL(url).searchParams.get('state')!;
+
+      await svc.exchangeCode(state, 'auth-code');
+
+      expect(providerService.nextOAuthLabel).not.toHaveBeenCalled();
+      expect(providerService.upsertProvider).toHaveBeenCalledWith(
+        'agent-1',
+        'user-1',
+        'openai',
+        expect.stringContaining('"t":"refreshed-access"'),
+        'subscription',
+        undefined,
+        'Work account',
+      );
+    });
+
     it('throws when the token endpoint returns an error', async () => {
       fetchMock.mockResolvedValue(mockResponse(400, {}, 'invalid_grant'));
       const url = await svc.generateAuthorizationUrl('a', 'u');

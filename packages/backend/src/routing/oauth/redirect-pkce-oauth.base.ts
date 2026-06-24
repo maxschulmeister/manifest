@@ -72,6 +72,7 @@ interface RedirectPkcePendingOAuth {
   agentId: string;
   userId: string;
   backendUrl: string;
+  label?: string;
   expiresAt: number;
 }
 
@@ -118,6 +119,7 @@ export abstract class RedirectPkceOauthBaseService {
     agentId: string,
     userId: string,
     backendUrl?: string,
+    label?: string,
   ): Promise<string> {
     const state = generateState();
     const { verifier, challenge } = generatePkce();
@@ -130,6 +132,7 @@ export abstract class RedirectPkceOauthBaseService {
       agentId,
       userId,
       backendUrl: safeBackendUrl,
+      ...(label ? { label } : {}),
     });
     if (this.useCallbackServer) {
       await this.ensureCallbackServer();
@@ -186,10 +189,9 @@ export abstract class RedirectPkceOauthBaseService {
     // exchange to discover their assigned project id. The result lives in
     // `blob.u` and is preserved across refreshes by `unwrapToken`.
     const blob = await this.enrichBlob(baseBlob);
-    const label = await this.providerService.nextOAuthLabel(
-      pending.agentId,
-      this.oauthConfig.providerId,
-    );
+    const label =
+      pending.label ??
+      (await this.providerService.nextOAuthLabel(pending.agentId, this.oauthConfig.providerId));
     const { provider: savedProvider } = await this.providerService.upsertProvider(
       pending.agentId,
       pending.userId,

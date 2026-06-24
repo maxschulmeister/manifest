@@ -21,6 +21,7 @@ interface PendingXaiOAuth {
   agentId: string;
   userId: string;
   backendUrl: string;
+  label?: string;
   expiresAt: number;
 }
 
@@ -56,6 +57,7 @@ export class XaiOauthService {
     agentId: string,
     userId: string,
     backendUrl?: string,
+    label?: string,
   ): Promise<string> {
     const state = generateState();
     const nonce = generateState(16);
@@ -66,6 +68,7 @@ export class XaiOauthService {
       agentId,
       userId,
       backendUrl: safeBackendUrl,
+      ...(label ? { label } : {}),
     });
     if (this.useCallbackServer) {
       await this.ensureCallbackServer();
@@ -122,7 +125,8 @@ export class XaiOauthService {
       r: data.refresh_token,
       e: Date.now() + data.expires_in * 1000,
     };
-    const label = await this.providerService.nextOAuthLabel(pending.agentId, 'xai');
+    const label =
+      pending.label ?? (await this.providerService.nextOAuthLabel(pending.agentId, 'xai'));
     const { provider: savedProvider } = await this.providerService.upsertProvider(
       pending.agentId,
       pending.userId,

@@ -47,6 +47,7 @@ import {
   disconnectProvider,
   renameProviderKey,
   revokeMinimaxOAuth,
+  startMinimaxOAuth,
 } from '../../src/services/api.js';
 import { toast } from '../../src/services/toast-store.js';
 import { getProvider } from '../../src/services/provider-utils';
@@ -188,6 +189,7 @@ describe('DeviceCodeDetailView — MiniMax Coding Plan token alternative', () =>
 const mockDisconnectProvider = disconnectProvider as ReturnType<typeof vi.fn>;
 const mockRevokeMinimaxOAuth = revokeMinimaxOAuth as ReturnType<typeof vi.fn>;
 const mockRenameProviderKey = renameProviderKey as ReturnType<typeof vi.fn>;
+const mockStartMinimaxOAuth = startMinimaxOAuth as ReturnType<typeof vi.fn>;
 
 function makeKey(overrides: Partial<RoutingProvider> = {}): RoutingProvider {
   return {
@@ -283,6 +285,31 @@ describe('DeviceCodeDetailView — multi-key', () => {
     });
     expect(mockDisconnectProvider).not.toHaveBeenCalled();
     expect(onUpdate).toHaveBeenCalled();
+  });
+
+  it('refresh starts the device-code OAuth flow for the selected label', async () => {
+    mockStartMinimaxOAuth.mockResolvedValue({
+      flowId: 'flow-1',
+      userCode: 'USER-CODE',
+      verificationUri: 'https://minimax.example/verify',
+      expiresAt: Date.now() + 600_000,
+      pollIntervalMs: 2000,
+    });
+    vi.spyOn(window, 'open').mockReturnValue({
+      opener: null,
+      location: { replace: vi.fn() },
+    } as unknown as Window);
+    const keys = [
+      makeKey({ id: 'k1', label: 'Primary' }),
+      makeKey({ id: 'k2', label: 'Secondary' }),
+    ];
+    renderMultiKeyMinimax(keys);
+
+    fireEvent.click(screen.getByLabelText('Refresh OAuth token for Primary'));
+
+    await waitFor(() => {
+      expect(mockStartMinimaxOAuth).toHaveBeenCalledWith('test-agent', { region: 'global' }, 'Primary');
+    });
   });
 
   it('single-key disconnect calls revoke and navigates back', async () => {

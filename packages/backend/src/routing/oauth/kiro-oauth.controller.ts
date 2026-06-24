@@ -21,6 +21,7 @@ export class KiroOauthController {
     @CurrentUser() user: AuthUser,
     @Query('startUrl') startUrl?: string | string[],
     @Query('region') region?: string | string[],
+    @Query('label') label?: string | string[],
   ) {
     if (!agentName) {
       throw new HttpException('agentName query parameter is required', HttpStatus.BAD_REQUEST);
@@ -35,11 +36,16 @@ export class KiroOauthController {
       options.region = trimmedRegion;
     }
     const agent = await this.resolveAgent.resolve(user.id, agentName);
+    const keyLabel = optionalTrimmedStringQuery(label, 'label');
     try {
       if (options.startUrl !== undefined || options.region !== undefined) {
-        return await this.oauthService.startAuthorization(agent.id, user.id, options);
+        return keyLabel
+          ? await this.oauthService.startAuthorization(agent.id, user.id, options, keyLabel)
+          : await this.oauthService.startAuthorization(agent.id, user.id, options);
       }
-      return await this.oauthService.startAuthorization(agent.id, user.id);
+      return keyLabel
+        ? await this.oauthService.startAuthorization(agent.id, user.id, undefined, keyLabel)
+        : await this.oauthService.startAuthorization(agent.id, user.id);
     } catch (err) {
       if (err instanceof KiroAuthorizationOptionsError) {
         throw new HttpException(err.message, HttpStatus.BAD_REQUEST);

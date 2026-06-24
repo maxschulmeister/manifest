@@ -237,6 +237,23 @@ describe('OAuthDetailView', () => {
     expect(onUpdate).toHaveBeenCalled();
   });
 
+  it('clicking Refresh starts OAuth for the matching labeled key', async () => {
+    mockGetOpenaiOAuthUrl.mockResolvedValue({ url: 'https://oauth.openai.com/authorize' });
+    vi.spyOn(window, 'open').mockReturnValue({ closed: false } as unknown as Window);
+    const keys = [
+      makeKey({ id: 'k1', label: 'Primary' }),
+      makeKey({ id: 'k2', label: 'Secondary' }),
+    ];
+
+    renderView({ connected: true, activeKeys: keys });
+    fireEvent.click(screen.getByLabelText('Refresh OAuth token for Primary'));
+
+    await waitFor(() => {
+      expect(mockGetOpenaiOAuthUrl).toHaveBeenCalledWith('test-agent', 'Primary');
+    });
+    expect(screen.getByPlaceholderText(/localhost:1455/)).toBeDefined();
+  });
+
   it('addKeyOpen effect triggers getOpenaiOAuthUrl when connected', async () => {
     mockGetOpenaiOAuthUrl.mockResolvedValue({ url: 'https://oauth.openai.com/authorize' });
     vi.spyOn(window, 'open').mockReturnValue({ closed: false } as unknown as Window);

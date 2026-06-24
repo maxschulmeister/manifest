@@ -43,6 +43,18 @@ describe('AnthropicOauthController', () => {
       expect(result).toEqual({ url: expect.any(String), state: 's1' });
       expect(oauth.generateAuthorizationUrl).toHaveBeenCalledWith('agent-1', 'user-1');
     });
+
+    it('passes a requested key label into the OAuth authorize flow', async () => {
+      const { ctrl, oauth } = build();
+      (oauth.generateAuthorizationUrl as jest.Mock).mockReturnValue({
+        url: 'https://claude.ai/oauth/authorize?state=s1',
+        state: 's1',
+      });
+
+      await ctrl.authorize('demo-agent', user, 'Primary');
+
+      expect(oauth.generateAuthorizationUrl).toHaveBeenCalledWith('agent-1', 'user-1', 'Primary');
+    });
   });
 
   describe('exchange', () => {

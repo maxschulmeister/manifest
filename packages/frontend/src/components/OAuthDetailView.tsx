@@ -2,7 +2,6 @@ import {
   createEffect,
   onCleanup,
   createSignal,
-  For,
   Show,
   type Component,
   type Accessor,
@@ -17,8 +16,7 @@ import {
 } from '../services/api.js';
 import { toast } from '../services/toast-store.js';
 import { monitorOAuthPopup } from '../services/oauth-popup.js';
-
-const MAX_LABEL_LENGTH = 50;
+import OAuthAccountList from './OAuthAccountList.jsx';
 
 function parseOAuthCallbackInput(raw: string, fallbackState: string | null) {
   let code: string | null = null;
@@ -64,9 +62,8 @@ const OAuthDetailView: Component<Props> = (props) => {
   const [pasteUrl, setPasteUrl] = createSignal('');
   const [pasteError, setPasteError] = createSignal<string | null>(null);
   const [oauthState, setOauthState] = createSignal<string | null>(null);
-  const [renamingId, setRenamingId] = createSignal<string | null>(null);
-  const [renameValue, setRenameValue] = createSignal('');
   const [addingAccount, setAddingAccount] = createSignal(false);
+  const [refreshingLabel, setRefreshingLabel] = createSignal<string | null>(null);
 
   // Dispose the OAuth popup monitor if the view unmounts mid-flow, otherwise its
   // 300ms URL poll keeps running after the component is gone.
@@ -98,7 +95,12 @@ const OAuthDetailView: Component<Props> = (props) => {
     setPasteError(null);
     setOauthState(null);
     setAddingAccount(false);
-    toast.success(`${props.provDef.name} subscription connected`);
+    toast.success(
+      refreshingLabel()
+        ? `${props.provDef.name} subscription refreshed`
+        : `${props.provDef.name} subscription connected`,
+    );
+    setRefreshingLabel(null);
     props.onUpdate();
   };
 
@@ -126,12 +128,14 @@ const OAuthDetailView: Component<Props> = (props) => {
     if (pasteFlowActive() && flowHasConnected()) finishOAuthSuccess();
   });
 
-  const handleOAuthLogin = async () => {
+  const handleOAuthLogin = async (label?: string) => {
     props.setBusy(true);
     setPasteUrl('');
     setPasteError(null);
     try {
-      const { url } = await oauthApi().getUrl(props.agentName);
+      const { url } = label
+        ? await oauthApi().getUrl(props.agentName, label)
+        : await oauthApi().getUrl(props.agentName);
       try {
         setOauthState(new URL(url).searchParams.get('state'));
       } catch {
@@ -143,6 +147,7 @@ const OAuthDetailView: Component<Props> = (props) => {
           'Popup was blocked by your browser. Allow popups for this site, then try again.',
         );
         if (props.connected()) setAddingAccount(false);
+        setRefreshingLabel(null);
         setOauthState(null);
         props.setBusy(false);
         return;
@@ -168,8 +173,15 @@ const OAuthDetailView: Component<Props> = (props) => {
       );
     } catch {
       if (props.connected()) setAddingAccount(false);
+      setRefreshingLabel(null);
       props.setBusy(false);
     }
+  };
+
+  const handleRefreshKey = (label: string) => {
+    setAddingAccount(false);
+    setRefreshingLabel(label);
+    void handleOAuthLogin(label);
   };
 
   const handlePasteSubmit = async () => {
@@ -206,6 +218,7 @@ const OAuthDetailView: Component<Props> = (props) => {
     setPasteUrl('');
     setPasteError(null);
     setOauthState(null);
+    setRefreshingLabel(null);
   };
 
   const handleDisconnect = async () => {
@@ -243,17 +256,7 @@ const OAuthDetailView: Component<Props> = (props) => {
     }
   };
 
-  const startRename = (k: RoutingProvider) => {
-    setRenamingId(k.id);
-    setRenameValue(k.label);
-  };
-
-  const commitRename = async (k: RoutingProvider) => {
-    const newLabel = renameValue().trim();
-    if (!newLabel || newLabel === k.label) {
-      setRenamingId(null);
-      return;
-    }
+  const handleRenameKey = async (k: RoutingProvider, newLabel: string) => {
     props.setBusy(true);
     try {
       await renameProviderKey(
@@ -264,7 +267,6 @@ const OAuthDetailView: Component<Props> = (props) => {
         props.selectedAuthType(),
       );
       toast.success(`Renamed to "${newLabel}"`);
-      setRenamingId(null);
       props.onUpdate();
     } catch {
       // toast handled upstream
@@ -286,7 +288,7 @@ const OAuthDetailView: Component<Props> = (props) => {
               <button
                 class="btn btn--primary provider-detail__action"
                 disabled={props.busy()}
-                onClick={handleOAuthLogin}
+                onClick={() => handleOAuthLogin()}
               >
                 <Show when={!props.busy()} fallback={<span class="spinner" />}>
                   Log in with {props.provDef.name}
@@ -361,7 +363,7 @@ const OAuthDetailView: Component<Props> = (props) => {
             </button>
           </div>
         </Show>
-        <Show when={addingAccount()}>
+        <Show when={addingAccount() || refreshingLabel()}>
           <button
             class="btn btn--outline provider-detail__action"
             disabled={props.busy()}
@@ -374,94 +376,15 @@ const OAuthDetailView: Component<Props> = (props) => {
       <Show when={showConnectedFlow()}>
         {/* Multi-key list */}
         <Show when={isMultiKey()}>
-          <div class="provider-detail__field">
-            <label class="provider-detail__label">Accounts</label>
-            <ul
-              role="list"
-              aria-label={`OAuth accounts for ${props.provDef.name}`}
-              style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px;"
-            >
-              <For each={props.activeKeys!()}>
-                {(k) => (
-                  <li style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid hsl(var(--border)); border-radius: 6px; background: hsl(var(--muted) / 0.3);">
-                    <Show
-                      when={renamingId() === k.id}
-                      fallback={
-                        <>
-                          <div style="flex: 1; min-width: 0;">
-                            <div style="font-weight: 500; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
-                              {k.label}
-                            </div>
-                            <div style="font-size: var(--font-size-xs); color: hsl(var(--muted-foreground));">
-                              Connected via {props.provDef.subscriptionLabel ?? 'subscription'}
-                            </div>
-                          </div>
-                          <button
-                            class="btn btn--outline btn--sm"
-                            style="flex-shrink: 0;"
-                            disabled={props.busy()}
-                            onClick={() => startRename(k)}
-                          >
-                            Rename
-                          </button>
-                          <button
-                            class="provider-detail__disconnect-icon"
-                            disabled={props.busy()}
-                            onClick={() => handleDeleteKey(k.label)}
-                            aria-label={`Delete account ${k.label}`}
-                            title="Delete account"
-                          >
-                            <svg
-                              width="16"
-                              height="16"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              stroke-width="2"
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                              aria-hidden="true"
-                            >
-                              <path d="M3 6h18" />
-                              <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
-                              <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
-                            </svg>
-                          </button>
-                        </>
-                      }
-                    >
-                      <input
-                        class="provider-detail__input"
-                        type="text"
-                        maxlength={MAX_LABEL_LENGTH}
-                        aria-label={`Rename ${k.label}`}
-                        value={renameValue()}
-                        onInput={(e) => setRenameValue(e.currentTarget.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') commitRename(k);
-                          if (e.key === 'Escape') setRenamingId(null);
-                        }}
-                      />
-                      <button
-                        class="btn btn--primary btn--sm"
-                        disabled={props.busy()}
-                        onClick={() => commitRename(k)}
-                      >
-                        Save
-                      </button>
-                      <button
-                        class="btn btn--outline btn--sm"
-                        disabled={props.busy()}
-                        onClick={() => setRenamingId(null)}
-                      >
-                        Cancel
-                      </button>
-                    </Show>
-                  </li>
-                )}
-              </For>
-            </ul>
-          </div>
+          <OAuthAccountList
+            accounts={props.activeKeys!}
+            providerName={props.provDef.name}
+            subscriptionLabel={props.provDef.subscriptionLabel}
+            busy={props.busy}
+            onRename={handleRenameKey}
+            onRefresh={handleRefreshKey}
+            onDelete={handleDeleteKey}
+          />
           <div class="provider-detail__footer">
             <button
               class="btn btn--outline provider-detail__disconnect"
