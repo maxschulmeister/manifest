@@ -44,6 +44,7 @@ interface PendingMinimaxOAuth {
   userId: string;
   baseUrl: string;
   resourceUrl: string;
+  label?: string;
   expiresAt: number;
   pollIntervalMs: number;
 }
@@ -99,6 +100,7 @@ export class MinimaxOauthService {
     agentId: string,
     userId: string,
     region: MinimaxRegion = DEFAULT_REGION,
+    label?: string,
   ): Promise<MinimaxOAuthStartResult> {
     this.cleanupExpired();
     const verifier = randomBytes(32).toString('base64url');
@@ -144,6 +146,7 @@ export class MinimaxOauthService {
       userId,
       baseUrl,
       resourceUrl,
+      ...(label ? { label } : {}),
       expiresAt,
       pollIntervalMs,
     });
@@ -216,7 +219,8 @@ export class MinimaxOauthService {
       e: toAbsoluteExpiryTimestamp(payload.expired_in),
       u: resourceUrl,
     };
-    const label = await this.providerService.nextOAuthLabel(pending.agentId, 'minimax');
+    const label =
+      pending.label ?? (await this.providerService.nextOAuthLabel(pending.agentId, 'minimax'));
     const { provider: savedProvider } = await this.providerService.upsertProvider(
       pending.agentId,
       pending.userId,

@@ -456,6 +456,22 @@ describe('AnthropicOAuthDetailView — multi-key', () => {
     expect(onUpdate).toHaveBeenCalled();
   });
 
+  it('refresh starts Claude OAuth for the selected label', async () => {
+    mockStartAnthropicOAuth.mockResolvedValue({ url: 'https://x', state: 'abc' });
+    vi.spyOn(window, 'open').mockReturnValue({ closed: false } as unknown as Window);
+    const keys = [
+      makeKey({ id: 'k1', label: 'Primary' }),
+      makeKey({ id: 'k2', label: 'Secondary' }),
+    ];
+    renderMultiKeyView(keys);
+
+    fireEvent.click(screen.getByLabelText('Refresh OAuth token for Primary'));
+
+    await waitFor(() => {
+      expect(mockStartAnthropicOAuth).toHaveBeenCalledWith('test-agent', 'Primary');
+    });
+  });
+
   it('shows "Disconnect all" button in multi-key mode', () => {
     const keys = [makeKey({ id: 'k1', label: 'A' }), makeKey({ id: 'k2', label: 'B' })];
     renderMultiKeyView(keys);

@@ -35,6 +35,7 @@ interface PendingKiroOAuth {
   agentId: string;
   userId: string;
   region: string;
+  label?: string;
   expiresAt: number;
   pollIntervalMs: number;
 }
@@ -112,6 +113,7 @@ export class KiroOauthService {
     agentId: string,
     userId: string,
     options: KiroAuthorizationOptions = {},
+    label?: string,
   ): Promise<KiroOAuthStartResult> {
     this.cleanupExpired();
     const { region, startUrl } = this.resolveAuthorizationOptions(options);
@@ -129,6 +131,7 @@ export class KiroOauthService {
       agentId,
       userId,
       region,
+      ...(label ? { label } : {}),
       expiresAt,
       pollIntervalMs,
     });
@@ -207,7 +210,8 @@ export class KiroOauthService {
       cs: pending.clientSecret,
       region: pending.region,
     };
-    const label = await this.providerService.nextOAuthLabel(pending.agentId, 'kiro');
+    const label =
+      pending.label ?? (await this.providerService.nextOAuthLabel(pending.agentId, 'kiro'));
     const { provider: savedProvider } = await this.providerService.upsertProvider(
       pending.agentId,
       pending.userId,

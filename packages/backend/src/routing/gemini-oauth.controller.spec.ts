@@ -69,6 +69,26 @@ describe('GeminiOauthController', () => {
       expect(result).toEqual({ url: 'https://accounts.google.com/o/oauth2/v2/auth?...' });
     });
 
+    it('passes a requested key label into the OAuth authorize flow', async () => {
+      resolveAgent.resolve.mockResolvedValue({ id: 'agent-id-1' } as never);
+      oauthService.generateAuthorizationUrl.mockResolvedValue(
+        'https://accounts.google.com/o/oauth2/v2/auth?...',
+      );
+      const req = {
+        protocol: 'http',
+        get: jest.fn().mockReturnValue('localhost:3001'),
+      } as unknown as Request;
+
+      await controller.authorize('my-agent', { id: 'user-1' } as never, req, 'Primary');
+
+      expect(oauthService.generateAuthorizationUrl).toHaveBeenCalledWith(
+        'agent-id-1',
+        'user-1',
+        'http://localhost:3001',
+        'Primary',
+      );
+    });
+
     it('throws 400 when agentName is missing', async () => {
       const req = {
         protocol: 'http',

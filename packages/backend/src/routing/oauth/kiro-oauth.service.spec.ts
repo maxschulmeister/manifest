@@ -90,9 +90,11 @@ describe('KiroOauthService', () => {
     return new KiroOauthService(provider.svc, config, discovery.svc);
   }
 
-  async function startFlow(service: KiroOauthService) {
+  async function startFlow(service: KiroOauthService, label?: string) {
     fetchMock.mockResolvedValueOnce(REGISTER_OK).mockResolvedValueOnce(DEVICE_OK);
-    return service.startAuthorization('agent-1', 'user-1');
+    return label
+      ? service.startAuthorization('agent-1', 'user-1', undefined, label)
+      : service.startAuthorization('agent-1', 'user-1');
   }
 
   describe('configuration', () => {
@@ -253,8 +255,8 @@ describe('KiroOauthService', () => {
   });
 
   describe('pollAuthorization', () => {
-    async function startAndGetFlowId(service: KiroOauthService): Promise<string> {
-      const { flowId } = await startFlow(service);
+    async function startAndGetFlowId(service: KiroOauthService, label?: string): Promise<string> {
+      const { flowId } = await startFlow(service, label);
       return flowId;
     }
 
@@ -373,6 +375,18 @@ describe('KiroOauthService', () => {
       });
       expect(discovery.discoverModels).toHaveBeenCalledWith({ id: 'p1' });
       expect(provider.recalculateTiers).toHaveBeenCalledWith('agent-1');
+    });
+
+    it('overwrites the labeled key captured when the refresh flow started', async () => {
+      const service = makeService();
+      const flowId = await startAndGetFlowId(service, 'Primary');
+      fetchMock.mockResolvedValueOnce(
+        jsonResponse(200, { accessToken: 'a', refreshToken: 'r', expiresIn: 3600 }),
+      );
+
+      expect((await service.pollAuthorization(flowId, 'user-1')).status).toBe('success');
+      expect(provider.nextOAuthLabel).not.toHaveBeenCalled();
+      expect(provider.upsertProvider.mock.calls[0][6]).toBe('Primary');
     });
 
     it('still succeeds when post-connect discovery throws', async () => {

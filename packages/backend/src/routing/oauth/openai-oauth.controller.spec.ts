@@ -104,6 +104,18 @@ describe('OpenaiOauthController', () => {
       );
     });
 
+    it('passes a requested key label into the OAuth authorize flow', async () => {
+      const { ctrl, oauth } = build();
+      (oauth.generateAuthorizationUrl as jest.Mock).mockResolvedValue('https://openai/oauth?y=2');
+      await ctrl.authorize('demo-agent', user, buildRequest(), 'Primary');
+      expect(oauth.generateAuthorizationUrl).toHaveBeenCalledWith(
+        'agent-1',
+        'user-1',
+        'http://localhost:3001',
+        'Primary',
+      );
+    });
+
     it('wraps service errors in a 503 carrying the original message', async () => {
       const { ctrl, oauth } = build();
       (oauth.generateAuthorizationUrl as jest.Mock).mockRejectedValue(new Error('bind failed'));

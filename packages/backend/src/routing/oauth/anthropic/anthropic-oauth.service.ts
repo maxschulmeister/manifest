@@ -71,13 +71,17 @@ export class AnthropicOauthService {
    * Build the authorize URL the user opens in a new tab. The state is also
    * returned so the SPA can pre-fill it on the paste-code step.
    */
-  async generateAuthorizationUrl(agentId: string, userId: string): Promise<AuthorizeResult> {
+  async generateAuthorizationUrl(
+    agentId: string,
+    userId: string,
+    label?: string,
+  ): Promise<AuthorizeResult> {
     const { verifier, challenge } = generatePkce();
     // Claude Code's Anthropic OAuth flow uses the PKCE verifier as state.
     const state = verifier;
     await this.pendingFlows.create(
       PROVIDER,
-      { state, verifier, agentId, userId },
+      { state, verifier, agentId, userId, ...(label ? { label } : {}) },
       ANTHROPIC_OAUTH.STATE_TTL_MS,
     );
 
@@ -149,7 +153,8 @@ export class AnthropicOauthService {
       e: Date.now() + data.expires_in * 1000,
     };
 
-    const label = await this.providerService.nextOAuthLabel(pending.agentId, PROVIDER);
+    const label =
+      pending.label ?? (await this.providerService.nextOAuthLabel(pending.agentId, PROVIDER));
     const { provider: savedProvider } = await this.providerService.upsertProvider(
       pending.agentId,
       pending.userId,

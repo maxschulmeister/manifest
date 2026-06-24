@@ -44,6 +44,26 @@ describe('MinimaxOauthController', () => {
     expect(result.flowId).toBe('flow-1');
   });
 
+  it('passes a requested key label into the OAuth start flow', async () => {
+    resolveAgent.resolve.mockResolvedValue({ id: 'agent-id-1' } as never);
+    oauthService.startAuthorization.mockResolvedValue({
+      flowId: 'flow-1',
+      userCode: 'ABCD-1234',
+      verificationUri: 'https://www.minimax.io/verify',
+      expiresAt: Date.now() + 60_000,
+      pollIntervalMs: 2000,
+    });
+
+    await controller.start('my-agent', 'cn', { id: 'user-1' } as never, 'Primary');
+
+    expect(oauthService.startAuthorization).toHaveBeenCalledWith(
+      'agent-id-1',
+      'user-1',
+      'cn',
+      'Primary',
+    );
+  });
+
   it('throws 400 when agentName is missing', async () => {
     await expect(controller.start('', 'global', { id: 'user-1' } as never)).rejects.toThrow(
       HttpException,

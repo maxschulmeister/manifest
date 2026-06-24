@@ -40,7 +40,51 @@ describe('OAuthPendingFlowStore', () => {
       'agent-1',
       'user-1',
       new Date('2026-05-01T12:10:00Z'),
+      null,
     ]);
+  });
+
+  it('stores and returns the target key label for refresh flows', async () => {
+    const { store, query } = buildStore();
+    query.mockResolvedValueOnce([]);
+    query.mockResolvedValueOnce([]);
+    query.mockResolvedValueOnce([]);
+    query.mockResolvedValueOnce([
+      {
+        provider: 'anthropic',
+        state: 's1',
+        code_verifier: 'v1',
+        agent_id: 'agent-1',
+        user_id: 'user-1',
+        expires_at: new Date('2026-05-01T12:10:00Z'),
+        label: 'Work account',
+      },
+    ]);
+
+    await store.create(
+      'anthropic',
+      {
+        state: 's1',
+        verifier: 'v1',
+        agentId: 'agent-1',
+        userId: 'user-1',
+        label: 'Work account',
+      },
+      600_000,
+    );
+
+    expect(query.mock.calls[2][1]).toEqual([
+      'anthropic',
+      's1',
+      'v1',
+      'agent-1',
+      'user-1',
+      new Date('2026-05-01T12:10:00Z'),
+      'Work account',
+    ]);
+    await expect(store.consume('anthropic', 's1', 'agent-1', 'user-1')).resolves.toMatchObject({
+      label: 'Work account',
+    });
   });
 
   it('consumes a pending flow scoped to the provider, state, agent, and user', async () => {

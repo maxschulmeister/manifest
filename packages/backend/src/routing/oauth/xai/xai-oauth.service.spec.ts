@@ -144,6 +144,36 @@ describe('XaiOauthService', () => {
     expect(svc.getPendingCount()).toBe(0);
   });
 
+  it('overwrites an existing labeled key when the OAuth refresh flow completes', async () => {
+    fetchMock.mockResolvedValue(
+      mockResponse(200, {
+        access_token: 'access-1',
+        refresh_token: 'refresh-1',
+        expires_in: 3600,
+      }),
+    );
+    const url = await svc.generateAuthorizationUrl(
+      'agent-1',
+      'user-1',
+      'http://localhost:3001',
+      'Primary',
+    );
+    const state = new URL(url).searchParams.get('state')!;
+
+    await svc.exchangeCode(state, 'auth-code');
+
+    expect(providerService.nextOAuthLabel).not.toHaveBeenCalled();
+    expect(providerService.upsertProvider).toHaveBeenCalledWith(
+      'agent-1',
+      'user-1',
+      'xai',
+      expect.stringContaining('"t":"access-1"'),
+      'subscription',
+      undefined,
+      'Primary',
+    );
+  });
+
   it('rejects unknown and expired states', async () => {
     await expect(svc.exchangeCode('bogus-state', 'code')).rejects.toThrow(
       'Invalid or expired OAuth state',

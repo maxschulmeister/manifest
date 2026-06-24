@@ -77,7 +77,7 @@ describe('MinimaxOauthService', () => {
 
   // --- startAuthorization ---
 
-  async function startFlow(region: 'global' | 'cn' = 'global') {
+  async function startFlow(region: 'global' | 'cn' = 'global', label?: string) {
     // The code endpoint echoes back a user_code + state. The service generates
     // the state itself, so we need to capture it from the request and echo it.
     fetchMock.mockImplementationOnce(async (_url: string, init: RequestInit) => {
@@ -90,7 +90,9 @@ describe('MinimaxOauthService', () => {
         state: body.get('state'),
       });
     });
-    return svc.startAuthorization('agent-1', 'user-1', region);
+    return label
+      ? svc.startAuthorization('agent-1', 'user-1', region, label)
+      : svc.startAuthorization('agent-1', 'user-1', region);
   }
 
   describe('startAuthorization', () => {
@@ -257,6 +259,31 @@ describe('MinimaxOauthService', () => {
       expect(discovery.discoverModels).toHaveBeenCalled();
       expect(provider.recalculateTiers).toHaveBeenCalledWith('agent-1');
       expect(svc.getPendingCount()).toBe(0);
+    });
+
+    it('overwrites the labeled key captured when the refresh flow started', async () => {
+      const start = await startFlow('global', 'Primary');
+      fetchMock.mockResolvedValueOnce(
+        mockResponse(200, {
+          status: 'success',
+          access_token: 'at',
+          refresh_token: 'rt',
+          expired_in: 3600,
+        }),
+      );
+
+      await svc.pollAuthorization(start.flowId, 'user-1');
+
+      expect(provider.nextOAuthLabel).not.toHaveBeenCalled();
+      expect(provider.upsertProvider).toHaveBeenCalledWith(
+        'agent-1',
+        'user-1',
+        'minimax',
+        expect.stringContaining('"t":"at"'),
+        'subscription',
+        undefined,
+        'Primary',
+      );
     });
 
     it('swallows discovery errors after a successful token exchange', async () => {

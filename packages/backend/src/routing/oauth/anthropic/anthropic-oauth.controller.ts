@@ -31,12 +31,19 @@ export class AnthropicOauthController {
    * the authorization code for the user to paste into the SPA.
    */
   @Post('authorize')
-  async authorize(@Query('agentName') agentName: string, @CurrentUser() user: AuthUser) {
+  async authorize(
+    @Query('agentName') agentName: string,
+    @CurrentUser() user: AuthUser,
+    @Query('label') label?: string | string[],
+  ) {
     if (!agentName) {
       throw new HttpException('agentName query parameter is required', HttpStatus.BAD_REQUEST);
     }
     const agent = await this.resolveAgent.resolve(user.id, agentName);
-    return this.oauthService.generateAuthorizationUrl(agent.id, user.id);
+    const keyLabel = optionalTrimmedStringQuery(label, 'label');
+    return keyLabel
+      ? this.oauthService.generateAuthorizationUrl(agent.id, user.id, keyLabel)
+      : this.oauthService.generateAuthorizationUrl(agent.id, user.id);
   }
 
   /**
