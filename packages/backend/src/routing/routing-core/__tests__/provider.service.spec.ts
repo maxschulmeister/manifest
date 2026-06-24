@@ -1009,6 +1009,69 @@ describe('ProviderService — route-only cleanup paths', () => {
     });
   });
 
+  describe('replaceProviderCredentialByLabel', () => {
+    const previousKey = process.env.MANIFEST_ENCRYPTION_KEY;
+
+    beforeEach(() => {
+      process.env.MANIFEST_ENCRYPTION_KEY = 'unit-test-encryption-key-1234567890';
+    });
+
+    afterEach(() => {
+      if (previousKey === undefined) delete process.env.MANIFEST_ENCRYPTION_KEY;
+      else process.env.MANIFEST_ENCRYPTION_KEY = previousKey;
+    });
+
+    it('updates only an existing labeled key', async () => {
+      const existing = Object.assign(new UserProvider(), {
+        id: 'p1',
+        agent_id: 'agent-1',
+        provider: 'openai',
+        auth_type: 'subscription',
+        label: 'Primary',
+        api_key_encrypted: encrypt('old-token', getEncryptionSecret()),
+        key_prefix: 'old-toke',
+        region: null,
+        is_active: true,
+      });
+      providerRepo.find.mockResolvedValue([existing]);
+
+      const result = await svc.replaceProviderCredentialByLabel(
+        'agent-1',
+        'openai',
+        'new-token',
+        'subscription',
+        undefined,
+        'Primary',
+      );
+
+      expect(result).toBe(existing);
+      expect(existing.key_prefix).toBe('new-toke');
+      expect(existing.is_active).toBe(true);
+      expect(providerRepo.save).toHaveBeenCalledWith(existing);
+      expect(providerRepo.insert).not.toHaveBeenCalled();
+      expect(autoAssign.recalculate).toHaveBeenCalledWith('agent-1');
+      expect(routingCache.invalidateAgent).toHaveBeenCalledWith('agent-1');
+    });
+
+    it('throws instead of creating a key when the refresh label is stale', async () => {
+      providerRepo.find.mockResolvedValue([]);
+
+      await expect(
+        svc.replaceProviderCredentialByLabel(
+          'agent-1',
+          'openai',
+          'new-token',
+          'subscription',
+          undefined,
+          'Missing',
+        ),
+      ).rejects.toThrow('No saved openai key named "Missing"');
+
+      expect(providerRepo.insert).not.toHaveBeenCalled();
+      expect(providerRepo.save).not.toHaveBeenCalled();
+    });
+  });
+
   describe('nextOAuthLabel', () => {
     it('returns undefined when no subscription rows exist', async () => {
       providerRepo.find.mockResolvedValue([]);

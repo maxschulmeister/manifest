@@ -70,7 +70,7 @@ const OAuthDetailView: Component<Props> = (props) => {
   let disposeOAuthMonitor: (() => void) | null = null;
   onCleanup(() => disposeOAuthMonitor?.());
 
-  const isMultiKey = () => (props.activeKeys?.() ?? []).length > 1;
+  const hasOAuthAccounts = () => (props.activeKeys?.() ?? []).length > 0;
   const isXaiProvider = () => props.provId === 'xai';
   const isOpenAiProvider = () => props.provId === 'openai';
   const callbackPlaceholder = () =>
@@ -374,8 +374,8 @@ const OAuthDetailView: Component<Props> = (props) => {
         </Show>
       </Show>
       <Show when={showConnectedFlow()}>
-        {/* Multi-key list */}
-        <Show when={isMultiKey()}>
+        {/* OAuth account list */}
+        <Show when={hasOAuthAccounts()}>
           <OAuthAccountList
             accounts={props.activeKeys!}
             providerName={props.provDef.name}
@@ -392,7 +392,7 @@ const OAuthDetailView: Component<Props> = (props) => {
               onClick={handleDisconnect}
             >
               <Show when={!props.busy()} fallback={<span class="spinner" />}>
-                Disconnect all
+                {activeKeyCount() > 1 ? 'Disconnect all' : 'Disconnect'}
               </Show>
             </button>
             <div style="flex: 1;" />
@@ -401,8 +401,8 @@ const OAuthDetailView: Component<Props> = (props) => {
             </button>
           </div>
         </Show>
-        {/* Single key — original view */}
-        <Show when={!isMultiKey()}>
+        {/* Fallback for legacy connected records that have not loaded key metadata. */}
+        <Show when={!hasOAuthAccounts()}>
           <div class="provider-detail__field">
             <span class="provider-detail__no-key">
               Connected via {props.provDef.subscriptionLabel ?? 'subscription'}

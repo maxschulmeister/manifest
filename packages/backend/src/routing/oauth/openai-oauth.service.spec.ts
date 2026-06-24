@@ -27,17 +27,20 @@ function createConfig(nodeEnv = 'production'): ConfigService {
 
 function createProviderService() {
   const upsertProvider = jest.fn().mockResolvedValue({ provider: { id: 'p1' } });
+  const replaceProviderCredentialByLabel = jest.fn().mockResolvedValue({ id: 'p1' });
   const recalculateTiers = jest.fn().mockResolvedValue(undefined);
   const nextOAuthLabel = jest.fn().mockResolvedValue(undefined);
   const getFreshSubscriptionCredential = jest.fn().mockResolvedValue(null);
   return {
     svc: {
       upsertProvider,
+      replaceProviderCredentialByLabel,
       recalculateTiers,
       nextOAuthLabel,
       getFreshSubscriptionCredential,
     } as unknown as ProviderService,
     upsertProvider,
+    replaceProviderCredentialByLabel,
     recalculateTiers,
     nextOAuthLabel,
     getFreshSubscriptionCredential,
@@ -177,9 +180,9 @@ describe('OpenaiOauthService', () => {
       await svc.exchangeCode(state, 'auth-code');
 
       expect(providerService.nextOAuthLabel).not.toHaveBeenCalled();
-      expect(providerService.upsertProvider).toHaveBeenCalledWith(
+      expect(providerService.upsertProvider).not.toHaveBeenCalled();
+      expect(providerService.replaceProviderCredentialByLabel).toHaveBeenCalledWith(
         'agent-1',
-        'user-1',
         'openai',
         expect.stringContaining('"t":"refreshed-access"'),
         'subscription',

@@ -102,7 +102,8 @@ const DeviceCodeDetailView: Component<Props> = (props) => {
 
   const api = () => getDeviceCodeApi(props.provId);
   const isKiro = () => props.provId === 'kiro';
-  const isMultiKey = () => (props.activeKeys?.() ?? []).length > 1;
+  const activeKeyCount = () => (props.activeKeys?.() ?? []).length;
+  const hasOAuthAccounts = () => activeKeyCount() > 0;
   const activeKeyLabels = () => (props.activeKeys?.() ?? []).map((k) => k.label);
   const showConnectFlow = () => !props.connected() || addingAccount();
   const showConnectedFlow = () => props.connected() && !addingAccount();
@@ -540,8 +541,8 @@ const DeviceCodeDetailView: Component<Props> = (props) => {
         </Show>
       </Show>
       <Show when={showConnectedFlow()}>
-        {/* Multi-key list */}
-        <Show when={isMultiKey()}>
+        {/* OAuth account list */}
+        <Show when={hasOAuthAccounts()}>
           <OAuthAccountList
             accounts={props.activeKeys!}
             providerName={props.provDef.name}
@@ -557,12 +558,12 @@ const DeviceCodeDetailView: Component<Props> = (props) => {
             onClick={handleDisconnect}
           >
             <Show when={!props.busy()} fallback={<span class="spinner" />}>
-              Disconnect all
+              {activeKeyCount() > 1 ? 'Disconnect all' : 'Disconnect'}
             </Show>
           </button>
         </Show>
-        {/* Single key — original view */}
-        <Show when={!isMultiKey()}>
+        {/* Fallback for legacy connected records that have not loaded key metadata. */}
+        <Show when={!hasOAuthAccounts()}>
           <div class="provider-detail__field">
             <span class="provider-detail__no-key">
               Connected via {props.provDef.subscriptionLabel ?? 'subscription'}

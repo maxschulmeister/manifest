@@ -25,17 +25,20 @@ function mockResponse(status: number, body: unknown, text = ''): Response {
 
 function createProviderService() {
   const upsertProvider = jest.fn().mockResolvedValue({ provider: { id: 'p1' } });
+  const replaceProviderCredentialByLabel = jest.fn().mockResolvedValue({ id: 'p1' });
   const recalculateTiers = jest.fn().mockResolvedValue(undefined);
   const nextOAuthLabel = jest.fn().mockResolvedValue(undefined);
   const getFreshSubscriptionCredential = jest.fn().mockResolvedValue(null);
   return {
     svc: {
       upsertProvider,
+      replaceProviderCredentialByLabel,
       recalculateTiers,
       nextOAuthLabel,
       getFreshSubscriptionCredential,
     } as unknown as ProviderService,
     upsertProvider,
+    replaceProviderCredentialByLabel,
     recalculateTiers,
     nextOAuthLabel,
     getFreshSubscriptionCredential,
@@ -274,9 +277,9 @@ describe('AnthropicOauthService', () => {
       await svc.exchangeCode(`second-code#${state}`, undefined, 'agent-1', 'user-1');
 
       expect(providerService.nextOAuthLabel).not.toHaveBeenCalled();
-      expect(providerService.upsertProvider).toHaveBeenCalledWith(
+      expect(providerService.upsertProvider).not.toHaveBeenCalled();
+      expect(providerService.replaceProviderCredentialByLabel).toHaveBeenCalledWith(
         'agent-1',
-        'user-1',
         'anthropic',
         expect.stringContaining('"t":"a2"'),
         'subscription',

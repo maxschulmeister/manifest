@@ -34,17 +34,20 @@ function createConfig(overrides: Record<string, string> = {}): ConfigService {
 
 function createProviderService() {
   const upsertProvider = jest.fn().mockResolvedValue({ provider: { id: 'p1' } });
+  const replaceProviderCredentialByLabel = jest.fn().mockResolvedValue({ id: 'p1' });
   const recalculateTiers = jest.fn().mockResolvedValue(undefined);
   const nextOAuthLabel = jest.fn().mockResolvedValue('Kiro 1');
   const getFreshSubscriptionCredential = jest.fn().mockResolvedValue(null);
   return {
     svc: {
       upsertProvider,
+      replaceProviderCredentialByLabel,
       recalculateTiers,
       nextOAuthLabel,
       getFreshSubscriptionCredential,
     } as unknown as ProviderService,
     upsertProvider,
+    replaceProviderCredentialByLabel,
     recalculateTiers,
     nextOAuthLabel,
     getFreshSubscriptionCredential,
@@ -386,7 +389,15 @@ describe('KiroOauthService', () => {
 
       expect((await service.pollAuthorization(flowId, 'user-1')).status).toBe('success');
       expect(provider.nextOAuthLabel).not.toHaveBeenCalled();
-      expect(provider.upsertProvider.mock.calls[0][6]).toBe('Primary');
+      expect(provider.upsertProvider).not.toHaveBeenCalled();
+      expect(provider.replaceProviderCredentialByLabel).toHaveBeenCalledWith(
+        'agent-1',
+        'kiro',
+        expect.stringContaining('"t":"a"'),
+        'subscription',
+        undefined,
+        'Primary',
+      );
     });
 
     it('still succeeds when post-connect discovery throws', async () => {

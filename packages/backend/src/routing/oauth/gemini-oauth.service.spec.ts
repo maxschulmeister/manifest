@@ -34,17 +34,20 @@ function createProviderService(): {
   getFreshSubscriptionCredential: jest.Mock;
 } {
   const upsertProvider = jest.fn().mockResolvedValue({ provider: { id: 'p1' } });
+  const replaceProviderCredentialByLabel = jest.fn().mockResolvedValue({ id: 'p1' });
   const recalculateTiers = jest.fn().mockResolvedValue(undefined);
   const nextOAuthLabel = jest.fn().mockResolvedValue(undefined);
   const getFreshSubscriptionCredential = jest.fn().mockResolvedValue(null);
   return {
     svc: {
       upsertProvider,
+      replaceProviderCredentialByLabel,
       recalculateTiers,
       nextOAuthLabel,
       getFreshSubscriptionCredential,
     } as unknown as ProviderService,
     upsertProvider,
+    replaceProviderCredentialByLabel,
     recalculateTiers,
     nextOAuthLabel,
     getFreshSubscriptionCredential,

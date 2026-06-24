@@ -153,17 +153,26 @@ export class AnthropicOauthService {
       e: Date.now() + data.expires_in * 1000,
     };
 
-    const label =
-      pending.label ?? (await this.providerService.nextOAuthLabel(pending.agentId, PROVIDER));
-    const { provider: savedProvider } = await this.providerService.upsertProvider(
-      pending.agentId,
-      pending.userId,
-      PROVIDER,
-      serializeOAuthTokenBlob(blob),
-      'subscription',
-      undefined,
-      label,
-    );
+    const savedProvider = pending.label
+      ? await this.providerService.replaceProviderCredentialByLabel(
+          pending.agentId,
+          PROVIDER,
+          serializeOAuthTokenBlob(blob),
+          'subscription',
+          undefined,
+          pending.label,
+        )
+      : (
+          await this.providerService.upsertProvider(
+            pending.agentId,
+            pending.userId,
+            PROVIDER,
+            serializeOAuthTokenBlob(blob),
+            'subscription',
+            undefined,
+            await this.providerService.nextOAuthLabel(pending.agentId, PROVIDER),
+          )
+        ).provider;
     try {
       await this.discoveryService.discoverModels(savedProvider);
       await this.providerService.recalculateTiers(pending.agentId);

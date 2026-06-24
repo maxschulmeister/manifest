@@ -29,17 +29,20 @@ function createConfig(): ConfigService {
 
 function createProviderService() {
   const upsertProvider = jest.fn().mockResolvedValue({ provider: { id: 'p1' } });
+  const replaceProviderCredentialByLabel = jest.fn().mockResolvedValue({ id: 'p1' });
   const recalculateTiers = jest.fn().mockResolvedValue(undefined);
   const nextOAuthLabel = jest.fn().mockResolvedValue(undefined);
   const getFreshSubscriptionCredential = jest.fn().mockResolvedValue(null);
   return {
     svc: {
       upsertProvider,
+      replaceProviderCredentialByLabel,
       recalculateTiers,
       nextOAuthLabel,
       getFreshSubscriptionCredential,
     } as unknown as ProviderService,
     upsertProvider,
+    replaceProviderCredentialByLabel,
     recalculateTiers,
     nextOAuthLabel,
     getFreshSubscriptionCredential,
@@ -275,9 +278,9 @@ describe('MinimaxOauthService', () => {
       await svc.pollAuthorization(start.flowId, 'user-1');
 
       expect(provider.nextOAuthLabel).not.toHaveBeenCalled();
-      expect(provider.upsertProvider).toHaveBeenCalledWith(
+      expect(provider.upsertProvider).not.toHaveBeenCalled();
+      expect(provider.replaceProviderCredentialByLabel).toHaveBeenCalledWith(
         'agent-1',
-        'user-1',
         'minimax',
         expect.stringContaining('"t":"at"'),
         'subscription',

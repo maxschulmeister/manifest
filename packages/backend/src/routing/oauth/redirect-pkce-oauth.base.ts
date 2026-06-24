@@ -189,18 +189,26 @@ export abstract class RedirectPkceOauthBaseService {
     // exchange to discover their assigned project id. The result lives in
     // `blob.u` and is preserved across refreshes by `unwrapToken`.
     const blob = await this.enrichBlob(baseBlob);
-    const label =
-      pending.label ??
-      (await this.providerService.nextOAuthLabel(pending.agentId, this.oauthConfig.providerId));
-    const { provider: savedProvider } = await this.providerService.upsertProvider(
-      pending.agentId,
-      pending.userId,
-      this.oauthConfig.providerId,
-      serializeOAuthTokenBlob(blob),
-      'subscription',
-      undefined,
-      label,
-    );
+    const savedProvider = pending.label
+      ? await this.providerService.replaceProviderCredentialByLabel(
+          pending.agentId,
+          this.oauthConfig.providerId,
+          serializeOAuthTokenBlob(blob),
+          'subscription',
+          undefined,
+          pending.label,
+        )
+      : (
+          await this.providerService.upsertProvider(
+            pending.agentId,
+            pending.userId,
+            this.oauthConfig.providerId,
+            serializeOAuthTokenBlob(blob),
+            'subscription',
+            undefined,
+            await this.providerService.nextOAuthLabel(pending.agentId, this.oauthConfig.providerId),
+          )
+        ).provider;
     try {
       await this.discoveryService.discoverModels(savedProvider);
       await this.providerService.recalculateTiers(pending.agentId);

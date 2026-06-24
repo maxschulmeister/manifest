@@ -219,17 +219,27 @@ export class MinimaxOauthService {
       e: toAbsoluteExpiryTimestamp(payload.expired_in),
       u: resourceUrl,
     };
-    const label =
-      pending.label ?? (await this.providerService.nextOAuthLabel(pending.agentId, 'minimax'));
-    const { provider: savedProvider } = await this.providerService.upsertProvider(
-      pending.agentId,
-      pending.userId,
-      'minimax',
-      JSON.stringify(blob),
-      'subscription',
-      undefined,
-      label,
-    );
+    const serializedBlob = JSON.stringify(blob);
+    const savedProvider = pending.label
+      ? await this.providerService.replaceProviderCredentialByLabel(
+          pending.agentId,
+          'minimax',
+          serializedBlob,
+          'subscription',
+          undefined,
+          pending.label,
+        )
+      : (
+          await this.providerService.upsertProvider(
+            pending.agentId,
+            pending.userId,
+            'minimax',
+            serializedBlob,
+            'subscription',
+            undefined,
+            await this.providerService.nextOAuthLabel(pending.agentId, 'minimax'),
+          )
+        ).provider;
     try {
       await this.discoveryService.discoverModels(savedProvider);
       await this.providerService.recalculateTiers(pending.agentId);

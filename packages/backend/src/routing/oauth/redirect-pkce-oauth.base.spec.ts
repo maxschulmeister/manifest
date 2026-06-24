@@ -57,6 +57,7 @@ function createConfig(nodeEnv = 'production'): ConfigService {
 function createProviderService(): ProviderService {
   return {
     upsertProvider: jest.fn().mockResolvedValue({ provider: { id: 'p1' } }),
+    replaceProviderCredentialByLabel: jest.fn().mockResolvedValue({ id: 'p1' }),
     recalculateTiers: jest.fn().mockResolvedValue(undefined),
     nextOAuthLabel: jest.fn().mockResolvedValue(undefined),
   } as unknown as ProviderService;

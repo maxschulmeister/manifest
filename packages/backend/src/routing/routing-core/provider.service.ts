@@ -176,6 +176,45 @@ export class ProviderService {
     return { provider: record, isNew: true };
   }
 
+  async replaceProviderCredentialByLabel(
+    agentId: string,
+    provider: string,
+    apiKey: string,
+    authType: AuthType,
+    region: string | undefined,
+    label: string,
+  ): Promise<UserProvider> {
+    const trimmedLabel = this.normalizeLabel(label, authType);
+    if (!trimmedLabel) {
+      throw new BadRequestException('A label is required to refresh an OAuth key');
+    }
+
+    const existingRows = await this.providerRepo.find({
+      where: { agent_id: agentId, provider, auth_type: authType },
+    });
+    const existing =
+      existingRows.find((r) => r.label.toLowerCase() === trimmedLabel.toLowerCase()) ?? null;
+    if (!existing) {
+      throw new NotFoundException(`No saved ${provider} key named "${trimmedLabel}"`);
+    }
+
+    const apiKeyEncrypted = encrypt(apiKey, getEncryptionSecret());
+    existing.api_key_encrypted = apiKeyEncrypted;
+    existing.key_prefix = apiKey.substring(0, 8);
+    existing.region = await this.resolveProviderRegion(
+      provider,
+      authType,
+      region,
+      apiKey,
+      existing,
+    );
+    existing.is_active = true;
+    existing.updated_at = new Date().toISOString();
+    await this.providerRepo.save(existing);
+    await this.afterProviderInsert(agentId);
+    return existing;
+  }
+
   private async upsertProviderWithLabel(
     agentId: string,
     userId: string,
